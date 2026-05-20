@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import {
   ChevronRight,
+  Diamond,
   FolderOpen,
   MessageSquare,
   Plus,
@@ -89,6 +90,13 @@ const tokenUsage = ref<number[]>([])
 
 <template>
   <aside class="sidebar">
+    <div class="sidebar-topbar">
+      <div class="brand">
+        <Diamond :size="18" />
+        <span>Tinadec</span>
+      </div>
+    </div>
+
     <nav class="sidebar-nav">
       <UiButton
         variant="ghost"

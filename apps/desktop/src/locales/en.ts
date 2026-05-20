@@ -57,6 +57,7 @@ export default {
     interrupt: 'Interrupt',
     terminal: 'Terminal',
     newChat: 'New Chat',
+    agentConfig: 'Agent Config',
   },
   context: {
     approval: 'Approval',

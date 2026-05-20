@@ -4,8 +4,8 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api, type ApprovalDto, type DoctorReportDto, type EventEnvelope, type MessageDto, type ModelSettingsDto, type OrchestrationSnapshotDto, type ProjectDto, type SessionDto } from '../api'
 import { basenameFromPath } from '../format'
-import AppHeader from '../components/AppHeader.vue'
 import AppSidebar from '../components/AppSidebar.vue'
+import AppHeader from '../components/AppHeader.vue'
 import ChatPanel from '../components/ChatPanel.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import type { AgentMode, PermissionLevel } from '../types/mode'
@@ -34,6 +34,7 @@ const busy = ref(false)
 const error = ref<string | null>(null)
 const eventSource = ref<EventSource | null>(null)
 const rightRailCollapsed = ref(false)
+const rightRailWidth = ref(320)
 const currentMode = ref<AgentMode>('auto')
 const currentPermission = ref<PermissionLevel>('default')
 
@@ -259,21 +260,14 @@ onUnmounted(() => {
 
     <section v-if="error" class="error-strip">{{ error }}</section>
 
-    <section class="workspace">
-      <AppSidebar
-        :projects="projects"
-        :sessions="sessions"
-        :selected-project-id="selectedProjectId"
-        :selected-session-id="selectedSessionId"
-        :busy="busy"
-        @select-project="selectedProjectId = $event"
-        @select-session="selectedSessionId = $event"
-        @create-session="createSession"
-        @open-project="openProject"
-        @go-market="router.push('/market')"
-        @go-settings="router.push('/settings')"
-      />
-
+    <section
+      class="workspace"
+      :style="{
+        '--chat-left': '260px',
+        '--chat-right': rightRailCollapsed ? '52px' : `${rightRailWidth + 8}px`,
+        '--chat-top': '0px'
+      }"
+    >
       <ChatPanel
         :messages="messages"
         :sessions="sessions"
@@ -296,8 +290,23 @@ onUnmounted(() => {
         @select-project="selectedProjectId = $event"
       />
 
+      <AppSidebar
+        :projects="projects"
+        :sessions="sessions"
+        :selected-project-id="selectedProjectId"
+        :selected-session-id="selectedSessionId"
+        :busy="busy"
+        @select-project="selectedProjectId = $event"
+        @select-session="selectedSessionId = $event"
+        @create-session="createSession"
+        @open-project="openProject"
+        @go-market="router.push('/market')"
+        @go-settings="router.push('/settings')"
+      />
+
       <ContextPanel
         v-model:collapsed="rightRailCollapsed"
+        v-model:width="rightRailWidth"
         :approvals="approvals"
         :events="recentEvents"
         :doctor="doctor"

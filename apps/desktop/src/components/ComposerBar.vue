@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ArrowUp, Plus, Image, FileText } from '@lucide/vue'
+import { ArrowUp, Plus, Image, FileText, Settings } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { UiButton, UiDropdownMenu } from '@/components/ui'
 import ModeSelector from './ModeSelector.vue'
 import PermissionSelector from './PermissionSelector.vue'
 import type { AgentMode, PermissionLevel } from '@/types/mode'
 
 const { t } = useI18n()
+const router = useRouter()
 
 const props = defineProps<{
   busy: boolean
@@ -40,6 +42,10 @@ function handleKeydown(event: KeyboardEvent) {
     event.preventDefault()
     emit('submit')
   }
+}
+
+function goToAgentSettings() {
+  router.push('/settings')
 }
 </script>
 
@@ -87,14 +93,22 @@ function handleKeydown(event: KeyboardEvent) {
       </div>
 
       <div class="composer-toolbar">
-        <ModeSelector
-          :model-value="mode"
-          @update:model-value="emit('update:mode', $event)"
-        />
-        <PermissionSelector
-          :model-value="permission"
-          @update:model-value="emit('update:permission', $event)"
-        />
+        <div class="composer-toolbar-left">
+          <ModeSelector
+            :model-value="mode"
+            @update:model-value="emit('update:mode', $event)"
+          />
+          <PermissionSelector
+            :model-value="permission"
+            @update:model-value="emit('update:permission', $event)"
+          />
+        </div>
+        <div class="composer-toolbar-right">
+          <button class="composer-agent-config" @click="goToAgentSettings">
+            <Settings :size="12" />
+            <span>{{ t('chat.agentConfig') }}</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

@@ -57,6 +57,7 @@ export default {
     interrupt: '中断',
     terminal: '终端',
     newChat: '新对话',
+    agentConfig: '智能体配置',
   },
   context: {
     approval: '审批',

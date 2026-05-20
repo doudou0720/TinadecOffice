@@ -11,8 +11,10 @@ import {
   SquareTerminal,
   FileText,
   ChevronRight,
+  Settings,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import type { ProjectDto } from '../api'
 import { UiButton, UiDropdownMenu, UiScrollArea } from '@/components/ui'
 import ModeSelector from './ModeSelector.vue'
@@ -20,6 +22,7 @@ import PermissionSelector from './PermissionSelector.vue'
 import type { AgentMode, PermissionLevel } from '@/types/mode'
 
 const { t } = useI18n()
+const router = useRouter()
 
 const props = defineProps<{
   projects: ProjectDto[]
@@ -146,7 +149,9 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   <div class="welcome-screen">
     <div class="welcome-content">
       <div class="welcome-title-row">
-        <h1 class="welcome-title">{{ titleText }}</h1>
+        <Transition name="title-fade" mode="out-in">
+          <h1 :key="titleText" class="welcome-title">{{ titleText }}</h1>
+        </Transition>
         <UiButton
           variant="ghost"
           size="icon"
@@ -223,10 +228,10 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             </button>
           </div>
           <div class="toolbar-right">
-            <UiButton variant="ghost" size="sm" class="toolbar-model">
-              <span>{{ t('chat.modelSelect') }}</span>
-              <ChevronRight :size="14" />
-            </UiButton>
+            <button class="toolbar-agent-config" @click="router.push('/settings')">
+              <Settings :size="12" />
+              <span>{{ t('chat.agentConfig') }}</span>
+            </button>
           </div>
         </div>
       </div>
