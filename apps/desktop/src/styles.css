@@ -2957,16 +2957,17 @@ label {
 }
 
 .model-provider-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 24px;
 }
 
 .model-provider-card {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
   padding: 14px;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -3027,6 +3028,7 @@ label {
 }
 
 .model-provider-card.add {
+  position: relative;
   border: 1px dashed var(--border-dashed);
   border-radius: 10px;
   background: transparent;
@@ -3061,6 +3063,126 @@ label {
 
 .model-provider-card.add.already-added {
   opacity: 0.5;
+}
+
+.provider-brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.provider-brand-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.provider-brand-icon.large {
+  width: 36px;
+  height: 36px;
+}
+
+.provider-brand-icon.large svg {
+  width: 32px;
+  height: 32px;
+}
+
+.model-provider-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.provider-chevron {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.provider-chevron.open {
+  transform: rotate(90deg);
+}
+
+.model-provider-card-wrapper {
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / -1;
+}
+
+.provider-detail-panel {
+  padding: 16px;
+  border: 1px solid var(--border-default);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  background: var(--bg-secondary);
+}
+
+.provider-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.provider-detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.provider-detail-info strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.provider-detail-info span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.provider-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.provider-detail-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.provider-detail-value {
+  display: block;
+  font-size: 13px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.provider-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-default);
+}
+
+.delete-confirm-text {
+  font-size: 13px;
+  color: var(--accent-danger);
+}
+
+.add-connection-kind {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
 }
 
 .template-summary {

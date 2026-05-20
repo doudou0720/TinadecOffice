@@ -416,6 +416,9 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(provider)
   }),
+  deleteModelProvider: (providerId: string) => request<void>(`/api/v1/model-providers/${encodeURIComponent(providerId)}`, {
+    method: 'DELETE'
+  }),
   listModelRoutes: () => request<ModelRouteDto[]>('/api/v1/model-routes'),
   saveModelRoute: (purpose: string, providerInstanceId: string, model?: string | null) => request<ModelRouteDto>(`/api/v1/model-routes/${encodeURIComponent(purpose)}`, {
     method: 'PUT',

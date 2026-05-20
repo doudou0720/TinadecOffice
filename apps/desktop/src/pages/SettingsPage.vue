@@ -4,9 +4,11 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronRight,
   Circle,
   Cloud,
   Cpu,
+  Edit3,
   FileText,
   Globe,
   HardDrive,
@@ -25,6 +27,7 @@ import {
   ShieldCheck,
   Sun,
   Terminal,
+  Trash2,
   Workflow,
   X
 } from '@lucide/vue'
@@ -91,6 +94,8 @@ const selectedAgentId = ref('')
 const configuringAgentId = ref('')
 const agentRouteProviderId = ref('')
 const agentRouteModel = ref('')
+const selectedProviderDetailId = ref('')
+const confirmDeleteId = ref('')
 const busy = ref(false)
 const loading = ref(false)
 const showModal = ref(false)
@@ -218,6 +223,24 @@ function openEditModal(provider: ModelProviderInstanceDto) {
   selectedProviderId.value = provider.id
   fillForm(provider)
   showModal.value = true
+}
+
+function toggleProviderDetail(providerId: string) {
+  selectedProviderDetailId.value = selectedProviderDetailId.value === providerId ? '' : providerId
+}
+
+async function deleteProvider(providerId: string) {
+  busy.value = true
+  try {
+    await api.deleteModelProvider(providerId)
+    if (selectedProviderDetailId.value === providerId) {
+      selectedProviderDetailId.value = ''
+    }
+    await loadModelCenter()
+  } finally {
+    busy.value = false
+    confirmDeleteId.value = ''
+  }
 }
 
 function closeModal() {
@@ -466,22 +489,79 @@ loadAgentCenter()
           </div>
 
           <div v-if="providers.length > 0" class="model-provider-grid">
-            <button
+            <div
               v-for="provider in providers"
               :key="provider.id"
-              class="model-provider-card"
-              :style="{ background: brandBg(provider.driver), borderColor: brandColor(provider.driver) + '40' }"
-              @click="openEditModal(provider)"
+              class="model-provider-card-wrapper"
             >
-              <div class="model-provider-card-main">
-                <span class="model-provider-name">{{ provider.display_name }}</span>
-                <span class="model-provider-meta">{{ connectionKindLabel(provider.connection_kind) }} · {{ provider.model || provider.driver }}</span>
+              <button
+                class="model-provider-card"
+                :style="{ background: brandBg(provider.driver), borderColor: brandColor(provider.driver) + '40' }"
+                @click="toggleProviderDetail(provider.id)"
+              >
+                <span class="provider-brand-icon" :style="{ color: brandColor(provider.driver) }" v-html="findTemplate(provider.driver)?.icon ?? ''"></span>
+                <div class="model-provider-card-main">
+                  <span class="model-provider-name">{{ provider.display_name }}</span>
+                  <span class="model-provider-meta">{{ connectionKindLabel(provider.connection_kind) }} · {{ provider.model || provider.driver }}</span>
+                </div>
+                <div class="model-provider-card-actions">
+                  <UiBadge :variant="statusVariant(provider.status)">
+                    <Circle :size="8" />
+                    {{ statusLabel(provider.status) }}
+                  </UiBadge>
+                  <ChevronRight :size="14" class="provider-chevron" :class="{ open: selectedProviderDetailId === provider.id }" />
+                </div>
+              </button>
+              <div v-if="selectedProviderDetailId === provider.id" class="provider-detail-panel">
+                <div class="provider-detail-head">
+                  <span class="provider-brand-icon large" :style="{ color: brandColor(provider.driver) }" v-html="findTemplate(provider.driver)?.icon ?? ''"></span>
+                  <div class="provider-detail-info">
+                    <strong>{{ provider.display_name }}</strong>
+                    <span>{{ provider.driver }} · {{ connectionKindLabel(provider.connection_kind) }}</span>
+                  </div>
+                  <UiBadge :variant="statusVariant(provider.status)">
+                    <Circle :size="8" />
+                    {{ statusLabel(provider.status) }}
+                  </UiBadge>
+                </div>
+                <div class="provider-detail-grid">
+                  <div v-if="provider.base_url">
+                    <span class="provider-detail-label">Base URL</span>
+                    <span class="provider-detail-value">{{ provider.base_url }}</span>
+                  </div>
+                  <div v-if="provider.model">
+                    <span class="provider-detail-label">Model</span>
+                    <span class="provider-detail-value">{{ provider.model }}</span>
+                  </div>
+                  <div>
+                    <span class="provider-detail-label">API Key</span>
+                    <span class="provider-detail-value">{{ provider.has_api_key ? '已存储' : '未设置' }}</span>
+                  </div>
+                  <div>
+                    <span class="provider-detail-label">状态</span>
+                    <span class="provider-detail-value">{{ provider.status_message || statusLabel(provider.status) }}</span>
+                  </div>
+                </div>
+                <div v-if="provider.capabilities.length > 0" class="model-capability-row">
+                  <span v-for="cap in provider.capabilities" :key="cap">{{ cap }}</span>
+                </div>
+                <div class="provider-detail-actions">
+                  <UiButton variant="outline" size="sm" @click="openEditModal(provider)">
+                    <Edit3 :size="14" />
+                    <span>编辑</span>
+                  </UiButton>
+                  <UiButton v-if="confirmDeleteId !== provider.id" variant="ghost" size="sm" @click="confirmDeleteId = provider.id">
+                    <Trash2 :size="14" />
+                    <span>删除</span>
+                  </UiButton>
+                  <template v-else>
+                    <span class="delete-confirm-text">确认删除？</span>
+                    <UiButton variant="destructive" size="sm" :disabled="busy" @click="deleteProvider(provider.id)">确认</UiButton>
+                    <UiButton variant="ghost" size="sm" @click="confirmDeleteId = ''">取消</UiButton>
+                  </template>
+                </div>
               </div>
-              <UiBadge :variant="statusVariant(provider.status)">
-                <Circle :size="8" />
-                {{ statusLabel(provider.status) }}
-              </UiBadge>
-            </button>
+            </div>
           </div>
           <p v-else class="quiet">{{ t('settings.noProvider') }}</p>
 
@@ -499,14 +579,15 @@ loadAgentCenter()
                 class="model-provider-card add"
                 :class="{ 'already-added': addedDriverSet.has(template.driver) }"
                 :style="{ background: template.brand_bg, borderColor: template.brand_color + '40' }"
-                @click="openAddModal(template)"
+                @click="addedDriverSet.has(template.driver) ? toggleProviderDetail(providers.find(p => p.driver === template.driver)?.id ?? '') : openAddModal(template)"
               >
                 <div class="add-label">
-                  <Plus v-if="!addedDriverSet.has(template.driver)" :size="16" />
-                  <CheckCircle2 v-else :size="16" style="color:var(--accent-success)" />
+                  <span class="provider-brand-icon" :style="{ color: template.brand_color }" v-html="template.icon"></span>
                   <span>{{ t(template.display_name_key) }}</span>
                   <small>{{ t(template.summary_key) }}</small>
+                  <span class="add-connection-kind">{{ connectionKindLabel(template.connection_kind) }}</span>
                 </div>
+                <CheckCircle2 v-if="addedDriverSet.has(template.driver)" :size="16" style="color:var(--accent-success); position:absolute; top:8px; right:8px" />
               </button>
             </div>
           </template>
