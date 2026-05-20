@@ -14,3 +14,5 @@ output/
 native/target/
 *.user
 *.suo
+native/codex-src/
+/native/codex-src
