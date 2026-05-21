@@ -35,33 +35,37 @@ const emit = defineEmits<{
 
 <template>
   <section class="conversation">
-    <template v-if="messages.length === 0">
-      <WelcomeScreen
-        :projects="props.projects"
-        :selected-project-id="selectedProjectId"
-        :model-name="modelName"
-        :busy="busy"
-        @send="emit('welcome-send', $event)"
-        @create-project="emit('create-project')"
-        @select-project="emit('select-project', $event)"
-        @update:mode="emit('update:mode', $event)"
-        @update:permission="emit('update:permission', $event)"
-      />
-    </template>
-    <template v-else>
-      <ChatHeader :current-session="currentSession" :current-project="currentProject" />
-      <TaskGraphPanel :snapshot="orchestration" />
-      <MessageList :messages="messages" />
-      <ComposerBar
-        :busy="busy"
-        :model-value="draft"
-        :mode="mode"
-        :permission="permission"
-        @update:model-value="emit('update:draft', $event)"
-        @update:mode="emit('update:mode', $event)"
-        @update:permission="emit('update:permission', $event)"
-        @submit="emit('send')"
-      />
-    </template>
+    <Transition name="chat-panel" mode="out-in">
+      <template v-if="messages.length === 0">
+        <WelcomeScreen
+          :projects="props.projects"
+          :selected-project-id="selectedProjectId"
+          :model-name="modelName"
+          :busy="busy"
+          @send="emit('welcome-send', $event)"
+          @create-project="emit('create-project')"
+          @select-project="emit('select-project', $event)"
+          @update:mode="emit('update:mode', $event)"
+          @update:permission="emit('update:permission', $event)"
+        />
+      </template>
+      <template v-else>
+        <div class="chat-active-panel" key="chat-active">
+          <ChatHeader :current-session="currentSession" />
+          <TaskGraphPanel :snapshot="orchestration" />
+          <MessageList :messages="messages" />
+          <ComposerBar
+            :busy="busy"
+            :model-value="draft"
+            :mode="mode"
+            :permission="permission"
+            @update:model-value="emit('update:draft', $event)"
+            @update:mode="emit('update:mode', $event)"
+            @update:permission="emit('update:permission', $event)"
+            @submit="emit('send')"
+          />
+        </div>
+      </template>
+    </Transition>
   </section>
 </template>
