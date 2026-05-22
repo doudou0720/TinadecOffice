@@ -41,24 +41,41 @@ public sealed class AgentWorkflowRuntime(IToolRegistry tools) : IAgentWorkflowRu
         var available = tools.ListTools("programming").Select(tool => tool.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var requested = new List<string>();
 
-        if (assignment.AgentType is "search-agent" or "code-locator-agent")
+        // Search-oriented agents: code-explorer, search-specialist, file-finder
+        if (assignment.AgentType is "code-explorer" or "search-specialist" or "file-finder")
         {
             requested.Add("search_files");
             requested.Add("glob_search");
             requested.Add("grep_content");
         }
 
-        if (assignment.AgentType == "testing-agent")
+        // Test / multimodal agent needs sandbox
+        if (assignment.AgentType is "test-multimodal" or "testing-agent")
         {
             requested.Add("sandbox_exec");
         }
 
-        if (assignment.AgentType == "review-executor" || node?.RequiredCapabilities.Contains("review.format") == true)
+        // Git manager needs sandbox for git commands
+        if (assignment.AgentType is "git-manager")
+        {
+            requested.Add("sandbox_exec");
+        }
+
+        // Code writer needs apply_patch and sandbox
+        if (assignment.AgentType is "code-writer")
+        {
+            requested.Add("sandbox_exec");
+            requested.Add("apply_patch");
+        }
+
+        // Review-related agents
+        if (assignment.AgentType is "review-executor" || node?.RequiredCapabilities.Contains("review.format") == true)
         {
             requested.Add("review_format");
         }
 
-        if (assignment.AgentType is "code-reader-agent" or "context-agent" || node?.RequiredCapabilities.Contains("file.read") == true)
+        // Agents that need file/workspace access
+        if (assignment.AgentType is "code-explorer" or "context-compressor" or "file-finder")
         {
             requested.Add("read_file");
             requested.Add("list_directory");

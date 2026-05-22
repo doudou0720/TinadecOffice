@@ -31,7 +31,7 @@ import {
   Workflow,
   X
 } from '@lucide/vue'
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref } from 'vue' 
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useTheme } from '../composables/useTheme'
@@ -42,7 +42,8 @@ import {
   type AgentProfileDto,
   type ModelProviderInstanceDto,
   type ModelRouteDto,
-  type SaveModelProviderInstanceInput
+  type SaveModelProviderInstanceInput,
+  type ToolDescriptorDto
 } from '../api'
 import {
   PROVIDER_TEMPLATES,
@@ -101,11 +102,17 @@ const routes = ref<ModelRouteDto[]>([])
 const agentModes = ref<AgentModeDto[]>([])
 const agents = ref<AgentProfileDto[]>([])
 const agentCandidates = ref<AgentCandidateDto[]>([])
+const availableTools = ref<ToolDescriptorDto[]>([])
 const selectedProviderId = ref('')
 const selectedAgentId = ref('')
 const configuringAgentId = ref('')
 const agentRouteProviderId = ref('')
 const agentRouteModel = ref('')
+const agentEditTools = ref<string[]>([])
+const agentEditCapabilities = ref<string[]>([])
+const agentEditSystemPrompt = ref('')
+const agentEditDescription = ref('')
+const agentNewCapability = ref('')
 const selectedProviderDetailId = ref('')
 const confirmDeleteId = ref('')
 const busy = ref(false)
@@ -315,6 +322,8 @@ async function loadAgentCenter() {
     agentModes.value = modes
     agents.value = agentList
     agentCandidates.value = candidates
+    // Tools list is non-critical — load independently so a missing Core doesn't block agent display
+    api.listTools().then((tools) => { availableTools.value = tools }).catch(() => { availableTools.value = [] })
     if (!agentList.some((agent) => agent.id === selectedAgentId.value)) {
       selectedAgentId.value = agentList[0]?.id ?? ''
     }
@@ -345,11 +354,66 @@ async function setAgentEnabled(agent: AgentProfileDto, enabled: boolean) {
       model_route_purpose: agent.model_route_purpose,
       allowed_tools: agent.allowed_tools,
       capabilities: agent.capabilities,
+      system_prompt: agent.system_prompt,
       enabled
     })
     await loadAgentCenter()
   } finally {
     busy.value = false
+  }
+}
+
+async function saveAgentProfile() {
+  if (!configuringAgent.value) return
+  busy.value = true
+  try {
+    await api.saveAgent(configuringAgent.value.id, {
+      name: configuringAgent.value.name,
+      layer: configuringAgent.value.layer,
+      agent_type: configuringAgent.value.agent_type,
+      mode: configuringAgent.value.mode,
+      description: agentEditDescription.value,
+      model_route_purpose: configuringAgent.value.model_route_purpose,
+      allowed_tools: agentEditTools.value,
+      capabilities: agentEditCapabilities.value,
+      system_prompt: agentEditSystemPrompt.value || null,
+      enabled: configuringAgent.value.enabled
+    })
+    await loadAgentCenter()
+    // Re-sync edit state from the saved agent
+    const updated = agents.value.find((a) => a.id === configuringAgentId.value)
+    if (updated) {
+      agentEditTools.value = [...updated.allowed_tools]
+      agentEditCapabilities.value = [...updated.capabilities]
+      agentEditSystemPrompt.value = updated.system_prompt ?? ''
+      agentEditDescription.value = updated.description
+    }
+  } finally {
+    busy.value = false
+  }
+}
+
+function toggleAgentTool(toolId: string) {
+  const idx = agentEditTools.value.indexOf(toolId)
+  if (idx >= 0) {
+    agentEditTools.value.splice(idx, 1)
+  } else {
+    agentEditTools.value.push(toolId)
+  }
+}
+
+function removeAgentCapability(cap: string) {
+  const idx = agentEditCapabilities.value.indexOf(cap)
+  if (idx >= 0) {
+    agentEditCapabilities.value.splice(idx, 1)
+  }
+}
+
+function addAgentCapability() {
+  const cap = agentNewCapability.value.trim()
+  if (cap && !agentEditCapabilities.value.includes(cap)) {
+    agentEditCapabilities.value.push(cap)
+    agentNewCapability.value = ''
   }
 }
 
@@ -366,17 +430,34 @@ function agentRouteProvider(agent: AgentProfileDto | null) {
 function openAgentConfig(agent: AgentProfileDto) {
   selectedAgentId.value = agent.id
   configuringAgentId.value = agent.id
-  const route = agentRoute(agent)
-  if (route && providers.value.some((p) => p.id === route.provider_instance_id)) {
-    agentRouteProviderId.value = route.provider_instance_id
-    agentRouteModel.value = route.model ?? providers.value.find((p) => p.id === route.provider_instance_id)?.model ?? ''
-  } else if (providers.value.length > 0) {
-    agentRouteProviderId.value = providers.value[0].id
-    agentRouteModel.value = providers.value[0].model ?? ''
-  } else {
+  agentEditTools.value = [...(agent.allowed_tools ?? [])]
+  agentEditCapabilities.value = [...(agent.capabilities ?? [])]
+  agentEditSystemPrompt.value = agent.system_prompt ?? ''
+  agentEditDescription.value = agent.description ?? ''
+  agentNewCapability.value = ''
+  try {
+    const route = agentRoute(agent)
+    if (route && providers.value.some((p) => p.id === route.provider_instance_id)) {
+      agentRouteProviderId.value = route.provider_instance_id
+      agentRouteModel.value = route.model ?? providers.value.find((p) => p.id === route.provider_instance_id)?.model ?? ''
+    } else if (providers.value.length > 0) {
+      agentRouteProviderId.value = providers.value[0].id
+      agentRouteModel.value = providers.value[0].model ?? ''
+    } else {
+      agentRouteProviderId.value = ''
+      agentRouteModel.value = ''
+    }
+  } catch {
     agentRouteProviderId.value = ''
     agentRouteModel.value = ''
   }
+  // Scroll to config panel after next tick
+  nextTick(() => {
+    const panel = document.querySelector('.agent-detail-panel')
+    if (panel) {
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  })
 }
 
 async function saveAgentRoute(agent: AgentProfileDto) {
@@ -436,11 +517,29 @@ function connectionKindLabel(kind: string) {
 
 function agentTypeLabel(type: string) {
   const map: Record<string, string> = {
-    chair: t('settings.agentTypeChair'),
-    planner: t('settings.agentTypePlanner'),
-    executor: t('settings.agentTypeExecutor'),
-    reviewer: t('settings.agentTypeReviewer'),
+    // Layer 1 · Planning 主动智能体
+    meeting: t('settings.agentTypeMeeting'),
+    'context-compressor': t('settings.agentTypeContextCompressor'),
     evolver: t('settings.agentTypeEvolver'),
+    'tool-assistant': t('settings.agentTypeToolAssistant'),
+    supervisor: t('settings.agentTypeSupervisor'),
+    'skill-learner': t('settings.agentTypeSkillLearner'),
+    // Layer 2 · Execution 被动执行类智能体
+    'task-planner': t('settings.agentTypeTaskPlanner'),
+    'test-multimodal': t('settings.agentTypeTestMultimodal'),
+    'code-explorer': t('settings.agentTypeCodeExplorer'),
+    'search-specialist': t('settings.agentTypeSearchSpecialist'),
+    'file-finder': t('settings.agentTypeFileFinder'),
+    'git-manager': t('settings.agentTypeGitManager'),
+    'code-writer': t('settings.agentTypeCodeWriter'),
+    designer: t('settings.agentTypeDesigner'),
+    // Legacy types (kept for backward compatibility)
+    chair: t('settings.agentTypeMeeting'),
+    planner: t('settings.agentTypeTaskPlanner'),
+    'tool-manager': t('settings.agentTypeToolAssistant'),
+    'evolution-algorithm': t('settings.agentTypeEvolver'),
+    executor: t('settings.agentTypeCodeWriter'),
+    reviewer: t('settings.agentTypeSupervisor'),
   }
   return map[type] ?? type
 }
@@ -788,13 +887,14 @@ loadAgentCenter()
                 </div>
                 <div>
                   <h3>{{ t('settings.agentConfiguration') }} · {{ configuringAgent.name }}</h3>
-                  <p>{{ configuringAgent.description }}</p>
+                  <p>{{ agentTypeLabel(configuringAgent.agent_type) }} · {{ agentLayerLabel(configuringAgent.layer) }}</p>
                 </div>
                 <UiButton variant="ghost" size="icon" :title="t('settings.closeConfig')" @click="configuringAgentId = ''">
                   <X :size="16" />
                 </UiButton>
               </div>
 
+              <!-- 启用开关 -->
               <div class="agent-config-switch">
                 <div>
                   <strong>{{ t('settings.agentEnabled') }}</strong>
@@ -807,11 +907,37 @@ loadAgentCenter()
                 />
               </div>
 
-              <div class="agent-model-config">
-                <div class="model-section-header">
-                  <h3>{{ t('settings.agentModelConfig') }}</h3>
-                  <UiBadge variant="outline">{{ configuringAgent.model_route_purpose }}</UiBadge>
+              <!-- 运行模式 -->
+              <div class="agent-config-section">
+                <div class="agent-config-section-title">{{ t('settings.agentModeTitle') }}</div>
+                <div class="agent-mode-grid">
+                  <button
+                    v-for="mode in agentModes"
+                    :key="mode.id"
+                    class="agent-mode-card"
+                    :class="{ active: configuringAgent.mode === mode.id }"
+                    @click="updateAgentMode(configuringAgent, mode.id)"
+                  >
+                    <strong>{{ mode.display_name }}</strong>
+                    <span>{{ mode.summary }}</span>
+                    <small>
+                      {{ t('settings.parallelExecutors') }} {{ mode.max_parallel_executors }}
+                      · {{ mode.worktree_isolation ? t('settings.worktreeOn') : t('settings.worktreeOff') }}
+                    </small>
+                  </button>
                 </div>
+                <div v-if="configuredAgentMode" class="agent-policy-strip">
+                  <ShieldCheck :size="16" />
+                  <span>
+                    {{ configuredAgentMode.approval_required ? t('settings.approvalGateOn') : t('settings.approvalGateOff') }}
+                    · {{ configuredAgentMode.budget_policy }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 模型配置 -->
+              <div class="agent-config-section">
+                <div class="agent-config-section-title">{{ t('settings.agentModelConfig') }}</div>
                 <div class="agent-detail-grid">
                   <div>
                     <span>{{ t('settings.routePurpose') }}</span>
@@ -845,47 +971,79 @@ loadAgentCenter()
                 </div>
               </div>
 
-              <div class="agent-mode-grid">
-                <button
-                  v-for="mode in agentModes"
-                  :key="mode.id"
-                  class="agent-mode-card"
-                  :class="{ active: configuringAgent.mode === mode.id }"
-                  @click="updateAgentMode(configuringAgent, mode.id)"
-                >
-                  <strong>{{ mode.display_name }}</strong>
-                  <span>{{ mode.summary }}</span>
-                  <small>
-                    {{ t('settings.parallelExecutors') }} {{ mode.max_parallel_executors }}
-                    · {{ mode.worktree_isolation ? t('settings.worktreeOn') : t('settings.worktreeOff') }}
-                  </small>
-                </button>
-              </div>
-
-              <div v-if="configuredAgentMode" class="agent-policy-strip">
-                <ShieldCheck :size="16" />
-                <span>
-                  {{ configuredAgentMode.approval_required ? t('settings.approvalGateOn') : t('settings.approvalGateOff') }}
-                  · {{ configuredAgentMode.budget_policy }}
-                </span>
-              </div>
-
-              <div class="agent-detail-grid">
-                <div>
-                  <span>{{ t('settings.modelRoute') }}</span>
-                  <strong>{{ configuringAgent.model_route_purpose }}</strong>
-                </div>
-                <div>
-                  <span>{{ t('settings.agentLayer') }}</span>
-                  <strong>{{ agentLayerLabel(configuringAgent.layer) }}</strong>
+              <!-- 描述 -->
+              <div class="agent-config-section">
+                <div class="agent-config-section-title">{{ t('settings.agentDescription') }}</div>
+                <div class="settings-field">
+                  <textarea
+                    v-model="agentEditDescription"
+                    class="settings-textarea"
+                    rows="2"
+                    :placeholder="t('settings.agentDescriptionPlaceholder')"
+                  ></textarea>
                 </div>
               </div>
 
-              <div class="model-capability-row">
-                <span v-for="tool in configuringAgent.allowed_tools" :key="tool">{{ tool }}</span>
+              <!-- 工具绑定 -->
+              <div class="agent-config-section">
+                <div class="agent-config-section-title">{{ t('settings.agentTools') }}</div>
+                <p class="agent-config-hint">{{ t('settings.agentToolsHint') }}</p>
+                <div class="agent-tool-grid">
+                  <button
+                    v-for="tool in availableTools"
+                    :key="tool.id"
+                    class="agent-tool-chip"
+                    :class="{
+                      active: agentEditTools.includes(tool.id),
+                      risky: tool.requires_approval
+                    }"
+                    @click="toggleAgentTool(tool.id)"
+                  >
+                    <span class="agent-tool-name">{{ tool.display_name }}</span>
+                    <span class="agent-tool-risk">{{ tool.risk }}</span>
+                  </button>
+                </div>
               </div>
-              <div class="model-capability-row">
-                <span v-for="capability in configuringAgent.capabilities" :key="capability">{{ capability }}</span>
+
+              <!-- 能力标签 -->
+              <div class="agent-config-section">
+                <div class="agent-config-section-title">{{ t('settings.agentCapabilities') }}</div>
+                <p class="agent-config-hint">{{ t('settings.agentCapabilitiesHint') }}</p>
+                <div class="agent-capability-list">
+                  <span v-for="cap in agentEditCapabilities" :key="cap" class="agent-cap-tag">
+                    {{ cap }}
+                    <button class="agent-cap-remove" @click="removeAgentCapability(cap)">×</button>
+                  </span>
+                </div>
+                <div class="agent-cap-add-row">
+                  <UiInput v-model="agentNewCapability" :placeholder="t('settings.newCapabilityPlaceholder')" size="sm" @keydown.enter="addAgentCapability" />
+                  <UiButton variant="outline" size="sm" :disabled="!agentNewCapability.trim()" @click="addAgentCapability">
+                    <Plus :size="14" />
+                    {{ t('settings.addCapability') }}
+                  </UiButton>
+                </div>
+              </div>
+
+              <!-- System Prompt -->
+              <div class="agent-config-section">
+                <div class="agent-config-section-title">{{ t('settings.agentSystemPrompt') }}</div>
+                <p class="agent-config-hint">{{ t('settings.agentSystemPromptHint') }}</p>
+                <div class="settings-field">
+                  <textarea
+                    v-model="agentEditSystemPrompt"
+                    class="settings-textarea prompt-editor"
+                    rows="6"
+                    :placeholder="t('settings.agentSystemPromptPlaceholder')"
+                  ></textarea>
+                </div>
+              </div>
+
+              <!-- 保存按钮 -->
+              <div class="agent-save-bar">
+                <UiButton :disabled="busy" @click="saveAgentProfile">
+                  <Save :size="14" />
+                  <span>{{ t('settings.saveAgent') }}</span>
+                </UiButton>
               </div>
             </template>
           </UiCard>

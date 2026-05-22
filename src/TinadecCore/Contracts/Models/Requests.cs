@@ -69,6 +69,7 @@ public sealed record SaveAgentProfileRequest(
     string ModelRoutePurpose,
     IReadOnlyList<string>? AllowedTools,
     IReadOnlyList<string>? Capabilities,
+    string? SystemPrompt,
     bool Enabled);
 
 public sealed record UpdateAgentModeRequest(

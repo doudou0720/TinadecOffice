@@ -585,6 +585,8 @@ app.MapPost("/api/v1/acp/adapters/{adapterId}/probe", (string adapterId, CoreSto
 
 app.MapGet("/api/v1/agent-modes", (CoreStore coreStore) => Results.Ok(coreStore.ListAgentModes()));
 
+app.MapGet("/api/v1/tools", (IToolRegistry tools) => Results.Ok(tools.ListTools()));
+
 app.MapGet("/api/v1/agents", (CoreStore coreStore) => Results.Ok(coreStore.ListAgentProfiles()));
 
 app.MapPut("/api/v1/agents/{agentId}", (string agentId, SaveAgentProfileRequest request, CoreStore coreStore, EventHub events) =>

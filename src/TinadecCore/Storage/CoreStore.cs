@@ -223,6 +223,7 @@ public sealed class CoreStore
                     model_route_purpose text not null,
                     allowed_tools_json text not null,
                     capabilities_json text not null,
+                    system_prompt text,
                     enabled integer not null,
                     is_builtin integer not null,
                     updated_at text not null
@@ -328,6 +329,16 @@ public sealed class CoreStore
                     created_at text not null
                 );
                 """);
+
+            // Migration: add system_prompt column to agent_profiles if missing
+            try
+            {
+                Execute(connection, "alter table agent_profiles add column system_prompt text");
+            }
+            catch (SqliteException)
+            {
+                // Column already exists — ignore
+            }
 
             Execute(connection, """
                 insert into model_settings (id, base_url, model, encrypted_api_key, updated_at)
@@ -1340,7 +1351,7 @@ public sealed class CoreStore
         using var command = connection.CreateCommand();
         command.CommandText = """
             select id, name, layer, agent_type, mode, description, model_route_purpose, allowed_tools_json,
-                   capabilities_json, enabled, is_builtin, updated_at
+                   capabilities_json, system_prompt, enabled, is_builtin, updated_at
             from agent_profiles
             order by case layer when 'planning' then 0 else 1 end, name
             """;
@@ -1381,6 +1392,7 @@ public sealed class CoreStore
                     model_route_purpose = $model_route_purpose,
                     allowed_tools_json = $allowed_tools_json,
                     capabilities_json = $capabilities_json,
+                    system_prompt = $system_prompt,
                     enabled = $enabled,
                     updated_at = $updated_at
                 where id = $id
@@ -1395,6 +1407,7 @@ public sealed class CoreStore
                 command.Parameters.AddWithValue("$model_route_purpose", NormalizeRoutePurpose(request.ModelRoutePurpose));
                 command.Parameters.AddWithValue("$allowed_tools_json", JsonSerializer.Serialize(tools, TinadecJson.Options));
                 command.Parameters.AddWithValue("$capabilities_json", JsonSerializer.Serialize(capabilities, TinadecJson.Options));
+                command.Parameters.AddWithValue("$system_prompt", (object?)request.SystemPrompt ?? DBNull.Value);
                 command.Parameters.AddWithValue("$enabled", request.Enabled ? 1 : 0);
                 command.Parameters.AddWithValue("$updated_at", now.ToString("O"));
             });
@@ -1420,6 +1433,7 @@ public sealed class CoreStore
             existing.ModelRoutePurpose,
             existing.AllowedTools,
             existing.Capabilities,
+            existing.SystemPrompt,
             existing.Enabled));
     }
 
@@ -1791,31 +1805,31 @@ public sealed class CoreStore
             new(
                 "Plan the work",
                 $"Break down the user goal and keep success criteria visible: {goal}",
-                "planning-agent",
+                "task-planner",
                 "read-only",
                 "observe",
                 ["Task graph exists", "Success criteria are explicit", "Approval points are marked"],
-                ["step.run"]),
+                ["step.run", "plan.decompose"]),
             new(
                 "Search relevant context",
                 "Collect files, symbols, docs, or prior events needed before execution.",
-                "search-agent",
+                "search-specialist",
                 "read-only",
                 "observe",
                 ["Relevant evidence is collected", "No workspace mutation occurs"],
-                ["search.query", "evidence.collect"]),
+                ["search.query", "evidence.collect", "web.search"]),
             new(
                 "Locate code touchpoints",
                 "Find concrete code locations, dependencies, and boundaries for the requested change.",
-                "code-locator-agent",
+                "code-explorer",
                 "read-only",
                 "observe",
                 ["Candidate files are identified", "Ownership boundaries are recorded"],
-                ["code.search", "evidence.collect"]),
+                ["code.search", "symbol.locate", "evidence.collect"]),
             new(
                 "Prepare validation",
                 "Identify tests, checks, or commands that should validate the result after approval.",
-                "testing-agent",
+                "test-multimodal",
                 "approval-gated",
                 "approval",
                 ["Validation commands are named", "Shell execution remains approval-gated"],
@@ -1823,11 +1837,11 @@ public sealed class CoreStore
             new(
                 "Synthesize execution guidance",
                 "Combine planning, evidence, supervision, and model reasoning into the next actionable step.",
-                "synthesis-model-agent",
+                "code-writer",
                 "read-only",
                 "observe",
                 ["Next step is clear", "Unresolved risks are visible"],
-                ["model.reason", "step.result"])
+                ["code.write", "step.result"])
         ];
     }
 
@@ -2117,6 +2131,7 @@ public sealed class CoreStore
                     model_route_purpose,
                     allowed_tools_json,
                     capabilities_json,
+                    system_prompt,
                     enabled,
                     is_builtin,
                     updated_at
@@ -2131,6 +2146,7 @@ public sealed class CoreStore
                     $model_route_purpose,
                     $allowed_tools_json,
                     $capabilities_json,
+                    $system_prompt,
                     1,
                     1,
                     $updated_at
@@ -2139,10 +2155,12 @@ public sealed class CoreStore
                     name = excluded.name,
                     layer = excluded.layer,
                     agent_type = excluded.agent_type,
+                    mode = excluded.mode,
                     description = excluded.description,
                     model_route_purpose = excluded.model_route_purpose,
                     allowed_tools_json = excluded.allowed_tools_json,
                     capabilities_json = excluded.capabilities_json,
+                    system_prompt = excluded.system_prompt,
                     is_builtin = 1,
                     updated_at = excluded.updated_at
                 """, command =>
@@ -2156,6 +2174,7 @@ public sealed class CoreStore
                 command.Parameters.AddWithValue("$model_route_purpose", profile.ModelRoutePurpose);
                 command.Parameters.AddWithValue("$allowed_tools_json", JsonSerializer.Serialize(profile.AllowedTools, TinadecJson.Options));
                 command.Parameters.AddWithValue("$capabilities_json", JsonSerializer.Serialize(profile.Capabilities, TinadecJson.Options));
+                command.Parameters.AddWithValue("$system_prompt", (object?)profile.SystemPrompt ?? DBNull.Value);
                 command.Parameters.AddWithValue("$updated_at", now.ToString("O"));
             });
 
@@ -2669,6 +2688,7 @@ public sealed class CoreStore
     {
         var allowedTools = JsonSerializer.Deserialize<string[]>(reader.GetString(7), TinadecJson.Options) ?? [];
         var capabilities = JsonSerializer.Deserialize<string[]>(reader.GetString(8), TinadecJson.Options) ?? [];
+        var systemPrompt = reader.IsDBNull(9) ? null : reader.GetString(9);
         return new AgentProfileDto(
             reader.GetString(0),
             reader.GetString(1),
@@ -2679,9 +2699,10 @@ public sealed class CoreStore
             reader.GetString(6),
             allowedTools,
             capabilities,
-            reader.GetInt32(9) == 1,
+            systemPrompt,
             reader.GetInt32(10) == 1,
-            ParseTime(reader.GetString(11)));
+            reader.GetInt32(11) == 1,
+            ParseTime(reader.GetString(12)));
     }
 
     private static AgentCandidateDto ReadAgentCandidate(SqliteDataReader reader)

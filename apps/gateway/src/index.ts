@@ -139,6 +139,11 @@ const app = new Elysia({ adapter: node() })
   .get('/api/v1/code/tools', () => ({
     tools: listCodeToolIds()
   }))
+  .get('/api/v1/tools', async ({ set }) => {
+    const result = await proxyJson('/api/v1/tools');
+    setStatus(set, result.status);
+    return result.data;
+  })
   .post('/api/v1/code/tools/:toolId/execute', async ({ params, body, set }) => {
     const result = await executeCodeTool(params.toolId, body as CodeToolExecuteRequest);
     if (!result) {

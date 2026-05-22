@@ -93,8 +93,8 @@ public sealed class CoreStoreTests
         Assert.Equal(snapshot.Nodes.Count, snapshot.StepResults.Count);
         Assert.Single(snapshot.ContextPacks);
         Assert.Single(snapshot.SupervisionFindings);
-        Assert.Contains(snapshot.Assignments, assignment => assignment.AgentType == "search-agent");
-        Assert.Contains(snapshot.Assignments, assignment => assignment.AgentType == "synthesis-model-agent");
+        Assert.Contains(snapshot.Assignments, assignment => assignment.AgentType == "search-specialist");
+        Assert.Contains(snapshot.Assignments, assignment => assignment.AgentType == "code-writer");
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class CoreStoreTests
         var store = new CoreStore(db);
         store.Initialize();
 
-        var testAgent = Assert.Single(store.ListAgentProfiles(), agent => agent.AgentType == "testing-agent");
+        var testAgent = Assert.Single(store.ListAgentProfiles(), agent => agent.AgentType == "test-multimodal");
         store.SaveAgentProfile(testAgent.Id, new SaveAgentProfileRequest(
             testAgent.Name,
             testAgent.Layer,
@@ -114,6 +114,7 @@ public sealed class CoreStoreTests
             testAgent.ModelRoutePurpose,
             testAgent.AllowedTools,
             testAgent.Capabilities,
+            null,
             false));
 
         var project = store.CreateProject("TinadecCode", Environment.CurrentDirectory);
@@ -122,7 +123,7 @@ public sealed class CoreStoreTests
 
         var snapshot = store.CreateOrchestrationRun(session.Id, message.Id, message.Content);
 
-        Assert.DoesNotContain(snapshot.Assignments, assignment => assignment.AgentType == "testing-agent");
+        Assert.DoesNotContain(snapshot.Assignments, assignment => assignment.AgentType == "test-multimodal");
         Assert.Contains(snapshot.Nodes, node => node.Title == "Prepare validation");
         Assert.Equal(snapshot.Nodes.Count - 1, snapshot.Assignments.Count);
     }
@@ -134,9 +135,9 @@ public sealed class CoreStoreTests
         var store = new CoreStore(db);
         store.Initialize();
 
-        var evolutionAgent = Assert.Single(store.ListAgentProfiles(), agent => agent.Id == "agent_evolution_algorithm");
-        Assert.Equal("Evolution Algorithm Agent", evolutionAgent.Name);
-        Assert.Equal("evolution-algorithm", evolutionAgent.AgentType);
+        var evolutionAgent = Assert.Single(store.ListAgentProfiles(), agent => agent.Id == "agent_evolver");
+        Assert.Equal("进化演化智能体", evolutionAgent.Name);
+        Assert.Equal("evolver", evolutionAgent.AgentType);
         Assert.All(store.ListAgentCandidates(), candidate => Assert.Equal("proposed", candidate.Status));
     }
 
@@ -149,18 +150,22 @@ public sealed class CoreStoreTests
 
         var agents = store.ListAgentProfiles();
 
+        // Layer 1 · Planning 主动智能体
         Assert.Contains(agents, agent => agent.Id == "agent_meeting" && agent.Layer == "planning");
-        Assert.Contains(agents, agent => agent.Id == "agent_tool_manager" && agent.Layer == "planning");
-        Assert.Contains(agents, agent => agent.Id == "agent_evolution_algorithm" && agent.Layer == "planning");
-        Assert.Contains(agents, agent => agent.Id == "agent_realtime_context_compressor" && agent.Layer == "planning");
+        Assert.Contains(agents, agent => agent.Id == "agent_tool_assistant" && agent.Layer == "planning");
+        Assert.Contains(agents, agent => agent.Id == "agent_evolver" && agent.Layer == "planning");
+        Assert.Contains(agents, agent => agent.Id == "agent_context_compressor" && agent.Layer == "planning");
         Assert.Contains(agents, agent => agent.Id == "agent_supervisor" && agent.Layer == "planning");
-        Assert.Contains(agents, agent => agent.Id == "executor_planning_agent" && agent.Layer == "execution");
-        Assert.Contains(agents, agent => agent.Id == "executor_testing_agent" && agent.Layer == "execution");
-        Assert.Contains(agents, agent => agent.Id == "executor_search_agent" && agent.Layer == "execution");
-        Assert.Contains(agents, agent => agent.Id == "executor_code_locator_agent" && agent.Layer == "execution");
-        Assert.Contains(agents, agent => agent.Id == "executor_synthesis_model_agent" && agent.Layer == "execution");
-        Assert.Contains(agents, agent => agent.Id == "executor_multimodal_model_agent" && agent.Layer == "execution");
-        Assert.Contains(agents, agent => agent.Id == "executor_generation_model_agent" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "agent_skill_learner" && agent.Layer == "planning");
+        // Layer 2 · Execution 被动执行类智能体
+        Assert.Contains(agents, agent => agent.Id == "executor_task_planner" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_test_multimodal" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_search_specialist" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_code_explorer" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_file_finder" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_git_manager" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_code_writer" && agent.Layer == "execution");
+        Assert.Contains(agents, agent => agent.Id == "executor_designer" && agent.Layer == "execution");
         Assert.DoesNotContain(agents, agent => agent.Id.Contains("purifier", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(agents, agent => agent.Name.Contains("Purifier", StringComparison.OrdinalIgnoreCase));
     }
@@ -201,7 +206,7 @@ public sealed class CoreStoreTests
         Assert.Equal(snapshot.Run!.Id, plan.RunId);
         Assert.Equal(AgentWorkflowRuntime.RuntimeName, plan.Runtime);
         Assert.Equal(snapshot.Assignments.Count, plan.Steps.Count);
-        Assert.Contains(plan.Steps, step => step.AgentType == "search-agent" && step.ToolIds.Contains("search_files"));
-        Assert.Contains(plan.Steps, step => step.AgentType == "testing-agent" && step.ToolIds.Contains("sandbox_exec"));
+        Assert.Contains(plan.Steps, step => step.AgentType == "search-specialist" && step.ToolIds.Contains("search_files"));
+        Assert.Contains(plan.Steps, step => step.AgentType == "test-multimodal" && step.ToolIds.Contains("sandbox_exec"));
     }
 }

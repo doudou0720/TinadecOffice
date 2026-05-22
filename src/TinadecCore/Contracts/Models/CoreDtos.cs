@@ -176,6 +176,7 @@ public sealed record AgentProfileDto(
     string ModelRoutePurpose,
     IReadOnlyList<string> AllowedTools,
     IReadOnlyList<string> Capabilities,
+    string? SystemPrompt,
     bool Enabled,
     bool IsBuiltIn,
     DateTimeOffset UpdatedAt);

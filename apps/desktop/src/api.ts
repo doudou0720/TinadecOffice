@@ -215,6 +215,7 @@ export interface AgentProfileDto {
   model_route_purpose: string;
   allowed_tools: string[];
   capabilities: string[];
+  system_prompt?: string | null;
   enabled: boolean;
   is_built_in: boolean;
   updated_at: string;
@@ -328,6 +329,17 @@ export interface SupervisionFindingDto {
   recommendation: string;
   status: string;
   created_at: string;
+}
+
+export interface ToolDescriptorDto {
+  id: string;
+  display_name: string;
+  domain: string;
+  source: string;
+  risk: string;
+  requires_approval: boolean;
+  execute_endpoint: string;
+  capabilities: string[];
 }
 
 export interface OrchestrationSnapshotDto {
@@ -465,6 +477,7 @@ export const api = {
   probeAcpAdapter: (adapterId: string) => request<AcpAdapterDto>(`/api/v1/acp/adapters/${encodeURIComponent(adapterId)}/probe`, { method: 'POST' }),
   listAgentModes: () => request<AgentModeDto[]>('/api/v1/agent-modes'),
   listAgents: () => request<AgentProfileDto[]>('/api/v1/agents'),
+  listTools: () => request<ToolDescriptorDto[]>('/api/v1/tools'),
   saveAgent: (agentId: string, agent: {
     name: string;
     layer: string;
@@ -474,6 +487,7 @@ export const api = {
     model_route_purpose: string;
     allowed_tools?: string[];
     capabilities?: string[];
+    system_prompt?: string | null;
     enabled: boolean;
   }) => request<AgentProfileDto>(`/api/v1/agents/${encodeURIComponent(agentId)}`, {
     method: 'PUT',
