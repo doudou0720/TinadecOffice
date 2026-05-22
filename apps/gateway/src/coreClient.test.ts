@@ -8,7 +8,7 @@ test('coreEndpoint resolves API paths against the configured core URL', () => {
 });
 
 test('Code tools expose programming-domain execution contracts', async () => {
-  assert.deepEqual(listCodeToolIds().sort(), ['apply_patch', 'review_format', 'sandbox_exec', 'search_files']);
+  assert.deepEqual(listCodeToolIds().sort(), ['apply_patch', 'glob_search', 'grep_content', 'list_directory', 'read_file', 'review_format', 'sandbox_exec', 'search_files']);
 
   const search = await executeCodeTool('search_files', { arguments: { query: 'AgentWorkflowRuntime' } });
   assert.equal(search?.requires_approval, false);

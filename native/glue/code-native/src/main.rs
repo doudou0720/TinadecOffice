@@ -2,11 +2,14 @@ use codex_apply_patch::{AppliedPatchFileChange, apply_patch};
 use codex_exec_server::LOCAL_FS;
 use codex_file_search::{FileSearchOptions, run};
 use codex_utils_absolute_path::AbsolutePathBuf;
+use ignore::WalkBuilder;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+use std::fs;
 use std::io::{self, Read};
 use std::num::NonZero;
 use std::path::PathBuf;
+use std::time::Instant;
 
 #[derive(Debug, Deserialize)]
 struct ExecuteRequest {
@@ -26,9 +29,19 @@ fn main() {
         Some("execute") => execute(),
         Some("version") | None => print_json(json!({
             "name": "tinadec-code-native",
-            "version": "0.1.0",
+            "version": "0.2.0",
             "upstream": "codex-rust",
-            "upstream_commit": "14953023471159aaed89f360c0f3da2346cb4bc0"
+            "upstream_commit": "14953023471159aaed89f360c0f3da2346cb4bc0",
+            "tools": [
+                "search_files",
+                "glob_search",
+                "read_file",
+                "list_directory",
+                "grep_content",
+                "apply_patch",
+                "sandbox_exec",
+                "review_format"
+            ]
         })),
         Some(_) => {
             eprintln!("unknown command");
@@ -60,19 +73,13 @@ fn execute() {
 
     let result = match request.tool_id.as_str() {
         "search_files" => execute_search_files(&request),
+        "glob_search" => execute_glob_search(&request),
+        "read_file" => execute_read_file(&request),
+        "list_directory" => execute_list_directory(&request),
+        "grep_content" => execute_grep_content(&request),
         "apply_patch" => execute_apply_patch(&request),
         "sandbox_exec" => execute_sandbox_exec(&request),
-        "review_format" => native_result(
-            &request,
-            "Review formatter native bridge is active; Codex review formatting will be wired here next.",
-            common_data(
-                &request,
-                json!({
-                    "cwd": request.cwd,
-                    "argument_keys": argument_keys(&request.arguments)
-                }),
-            ),
-        ),
+        "review_format" => execute_review_format(&request),
         _ => failed_result(
             &request.tool_id,
             format!("unknown native tool '{}'", request.tool_id),
@@ -87,6 +94,8 @@ fn execute() {
 
     print_json(result);
 }
+
+// ── search_files: fuzzy file name search via Codex Rust codex-file-search ──
 
 fn execute_search_files(request: &ExecuteRequest) -> Value {
     let query = request
@@ -112,20 +121,17 @@ fn execute_search_files(request: &ExecuteRequest) -> Value {
         );
     }
 
-    let cwd = match request.cwd.as_deref() {
-        Some(value) => PathBuf::from(value),
-        None => match std::env::current_dir() {
-            Ok(value) => value,
-            Err(error) => {
-                return failed_result(
-                    &request.tool_id,
-                    format!("failed to resolve current directory: {error}"),
-                    false,
-                    None,
-                    common_data(request, json!({})),
-                );
-            }
-        },
+    let cwd = match resolve_cwd(request) {
+        Some(value) => value,
+        None => {
+            return failed_result(
+                &request.tool_id,
+                "failed to resolve current directory".to_string(),
+                false,
+                None,
+                common_data(request, json!({})),
+            );
+        }
     };
 
     let limit = request
@@ -208,6 +214,542 @@ fn execute_search_files(request: &ExecuteRequest) -> Value {
         ),
     }
 }
+
+// ── glob_search: glob-pattern file name search via Codex Rust ignore crate ──
+
+fn execute_glob_search(request: &ExecuteRequest) -> Value {
+    let pattern = request
+        .arguments
+        .get("pattern")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    if pattern.trim().is_empty() {
+        return failed_result(
+            &request.tool_id,
+            "glob_search requires a non-empty pattern argument (e.g. '**/*.rs', 'src/**/*.ts').",
+            false,
+            None,
+            common_data(
+                request,
+                json!({
+                    "cwd": request.cwd,
+                    "argument_keys": argument_keys(&request.arguments)
+                }),
+            ),
+        );
+    }
+
+    let cwd = match resolve_cwd(request) {
+        Some(value) => value,
+        None => {
+            return failed_result(
+                &request.tool_id,
+                "failed to resolve current directory".to_string(),
+                false,
+                None,
+                common_data(request, json!({})),
+            );
+        }
+    };
+
+    let limit = request
+        .arguments
+        .get("limit")
+        .and_then(Value::as_u64)
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(50);
+
+    let start = Instant::now();
+    let mut builder = WalkBuilder::new(&cwd);
+    builder
+        .hidden(false)
+        .follow_links(false)
+        .require_git(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true);
+
+    // Build an override from the pattern to filter matches
+    if let Ok(ov) = ignore::overrides::OverrideBuilder::new(&cwd)
+        .add(pattern)
+        .and_then(|b| b.build())
+    {
+        builder.overrides(ov);
+    }
+
+    let mut matches = Vec::new();
+    for entry in builder.build().filter_map(|e| e.ok()).take(limit) {
+        let path = entry.path();
+        let relative = path.strip_prefix(&cwd).unwrap_or(path);
+        matches.push(json!({
+            "path": relative.to_string_lossy(),
+            "full_path": path.to_string_lossy(),
+            "is_dir": path.is_dir(),
+            "is_file": path.is_file()
+        }));
+    }
+
+    let elapsed = start.elapsed();
+    native_result(
+        request,
+        format!(
+            "glob_search matched {} entries for pattern '{}' in {:.1}ms.",
+            matches.len(),
+            pattern,
+            elapsed.as_secs_f64() * 1000.0
+        ),
+        common_data(
+            request,
+            json!({
+                "cwd": cwd.to_string_lossy(),
+                "pattern": pattern,
+                "match_count": matches.len(),
+                "matches": matches
+            }),
+        ),
+    )
+}
+
+// ── read_file: read file contents with optional line range ──
+
+fn execute_read_file(request: &ExecuteRequest) -> Value {
+    let file_path = request
+        .arguments
+        .get("path")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    if file_path.trim().is_empty() {
+        return failed_result(
+            &request.tool_id,
+            "read_file requires a non-empty 'path' argument.",
+            false,
+            None,
+            common_data(request, json!({})),
+        );
+    }
+
+    let cwd = match resolve_cwd(request) {
+        Some(value) => value,
+        None => PathBuf::from("."),
+    };
+
+    // Resolve relative paths against cwd
+    let resolved = if PathBuf::from(file_path).is_absolute() {
+        PathBuf::from(file_path)
+    } else {
+        cwd.join(file_path)
+    };
+
+    let metadata = match fs::metadata(&resolved) {
+        Ok(m) => m,
+        Err(error) => {
+            return failed_result(
+                &request.tool_id,
+                format!("cannot read file '{}': {error}", resolved.display()),
+                false,
+                None,
+                common_data(
+                    request,
+                    json!({
+                        "path": file_path,
+                        "resolved": resolved.to_string_lossy()
+                    }),
+                ),
+            );
+        }
+    };
+
+    if metadata.is_dir() {
+        return failed_result(
+            &request.tool_id,
+            format!("'{}' is a directory, not a file. Use list_directory instead.", resolved.display()),
+            false,
+            None,
+            common_data(
+                request,
+                json!({
+                    "path": file_path,
+                    "resolved": resolved.to_string_lossy()
+                }),
+            ),
+        );
+    }
+
+    let content = match fs::read_to_string(&resolved) {
+        Ok(c) => c,
+        Err(error) => {
+            // Try reading as bytes for binary files
+            match fs::read(&resolved) {
+                Ok(bytes) => {
+                    let size = bytes.len();
+                    return native_result(
+                        request,
+                        format!("File is binary ({} bytes). Cannot display as text.", size),
+                        common_data(
+                            request,
+                            json!({
+                                "path": file_path,
+                                "resolved": resolved.to_string_lossy(),
+                                "size_bytes": size,
+                                "is_binary": true,
+                                "content": null
+                            }),
+                        ),
+                    );
+                }
+                Err(_) => {
+                    return failed_result(
+                        &request.tool_id,
+                        format!("cannot read file '{}': {error}", resolved.display()),
+                        false,
+                        None,
+                        common_data(request, json!({ "path": file_path })),
+                    );
+                }
+            }
+        }
+    };
+
+    let total_lines = content.lines().count();
+    let start_line = request
+        .arguments
+        .get("start_line")
+        .and_then(Value::as_u64)
+        .map(|v| v as usize)
+        .unwrap_or(1);
+    let end_line = request
+        .arguments
+        .get("end_line")
+        .and_then(Value::as_u64)
+        .map(|v| v as usize)
+        .unwrap_or(total_lines);
+
+    let sliced: String = content
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| *i + 1 >= start_line && *i + 1 <= end_line)
+        .map(|(i, line)| format!("{:>6}\t{}", i + 1, line))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let shown_lines = sliced.lines().count();
+    let truncated = total_lines > shown_lines;
+    let size_bytes = content.len();
+
+    native_result(
+        request,
+        format!(
+            "Read {} of {} lines from '{}' ({} bytes){}",
+            shown_lines,
+            total_lines,
+            file_path,
+            size_bytes,
+            if truncated { " [truncated]" } else { "" }
+        ),
+        common_data(
+            request,
+            json!({
+                "path": file_path,
+                "resolved": resolved.to_string_lossy(),
+                "size_bytes": size_bytes,
+                "total_lines": total_lines,
+                "start_line": start_line,
+                "end_line": end_line,
+                "shown_lines": shown_lines,
+                "truncated": truncated,
+                "content": sliced
+            }),
+        ),
+    )
+}
+
+// ── list_directory: list directory entries with metadata ──
+
+fn execute_list_directory(request: &ExecuteRequest) -> Value {
+    let dir_path = request
+        .arguments
+        .get("path")
+        .and_then(Value::as_str)
+        .unwrap_or(".");
+
+    let cwd = match resolve_cwd(request) {
+        Some(value) => value,
+        None => PathBuf::from("."),
+    };
+
+    let resolved = if PathBuf::from(dir_path).is_absolute() {
+        PathBuf::from(dir_path)
+    } else {
+        cwd.join(dir_path)
+    };
+
+    let read_dir = match fs::read_dir(&resolved) {
+        Ok(rd) => rd,
+        Err(error) => {
+            return failed_result(
+                &request.tool_id,
+                format!("cannot list directory '{}': {error}", resolved.display()),
+                false,
+                None,
+                common_data(
+                    request,
+                    json!({
+                        "path": dir_path,
+                        "resolved": resolved.to_string_lossy()
+                    }),
+                ),
+            );
+        }
+    };
+
+    let show_hidden = request
+        .arguments
+        .get("show_hidden")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let limit = request
+        .arguments
+        .get("limit")
+        .and_then(Value::as_u64)
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(200);
+
+    let mut entries = Vec::new();
+    for entry in read_dir.filter_map(|e| e.ok()).take(limit) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !show_hidden && name.starts_with('.') {
+            continue;
+        }
+        let metadata = entry.metadata().ok();
+        let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+        let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+        entries.push(json!({
+            "name": name,
+            "is_dir": is_dir,
+            "is_file": !is_dir,
+            "size_bytes": if is_dir { Value::Null } else { json!(size) }
+        }));
+    }
+
+    // Sort: directories first, then alphabetically
+    entries.sort_by(|a, b| {
+        let a_dir = a.get("is_dir").and_then(Value::as_bool).unwrap_or(false);
+        let b_dir = b.get("is_dir").and_then(Value::as_bool).unwrap_or(false);
+        match (a_dir, b_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => {
+                let a_name = a.get("name").and_then(Value::as_str).unwrap_or("");
+                let b_name = b.get("name").and_then(Value::as_str).unwrap_or("");
+                a_name.cmp(b_name)
+            }
+        }
+    });
+
+    let dir_count = entries.iter().filter(|e| e.get("is_dir").and_then(Value::as_bool).unwrap_or(false)).count();
+    let file_count = entries.len() - dir_count;
+
+    native_result(
+        request,
+        format!(
+            "Listed {} entries in '{}' ({} directories, {} files).",
+            entries.len(),
+            dir_path,
+            dir_count,
+            file_count
+        ),
+        common_data(
+            request,
+            json!({
+                "path": dir_path,
+                "resolved": resolved.to_string_lossy(),
+                "entries": entries,
+                "dir_count": dir_count,
+                "file_count": file_count
+            }),
+        ),
+    )
+}
+
+// ── grep_content: search file contents for a pattern ──
+
+fn execute_grep_content(request: &ExecuteRequest) -> Value {
+    let pattern = request
+        .arguments
+        .get("pattern")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+
+    if pattern.trim().is_empty() {
+        return failed_result(
+            &request.tool_id,
+            "grep_content requires a non-empty 'pattern' argument.",
+            false,
+            None,
+            common_data(request, json!({})),
+        );
+    }
+
+    let cwd = match resolve_cwd(request) {
+        Some(value) => value,
+        None => {
+            return failed_result(
+                &request.tool_id,
+                "failed to resolve current directory".to_string(),
+                false,
+                None,
+                common_data(request, json!({})),
+            );
+        }
+    };
+
+    let glob_pattern = request
+        .arguments
+        .get("glob")
+        .and_then(Value::as_str);
+
+    let limit = request
+        .arguments
+        .get("limit")
+        .and_then(Value::as_u64)
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(50);
+
+    let context_lines = request
+        .arguments
+        .get("context")
+        .and_then(Value::as_u64)
+        .map(|v| v as usize)
+        .unwrap_or(0);
+
+    let case_insensitive = request
+        .arguments
+        .get("case_insensitive")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let start = Instant::now();
+
+    // Build file walker
+    let mut builder = WalkBuilder::new(&cwd);
+    builder
+        .hidden(false)
+        .follow_links(false)
+        .require_git(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true);
+
+    if let Some(glob) = glob_pattern {
+        if let Ok(ov) = ignore::overrides::OverrideBuilder::new(&cwd)
+            .add(glob)
+            .and_then(|b| b.build())
+        {
+            builder.overrides(ov);
+        }
+    }
+
+    let pattern_lower = pattern.to_lowercase();
+    let mut matches = Vec::new();
+    let mut files_searched = 0usize;
+
+    for entry in builder.build().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        // Skip binary-like files by extension
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let binary_extensions = ",exe,dll,so,dylib,png,jpg,jpeg,gif,bmp,ico,zip,tar,gz,rar,7z,mp3,mp4,wav,avi,pdf,doc,docx,xls,xlsx,ppt,pptx,class,o,obj,pyc,wasm,";
+        if binary_extensions.contains(&format!(",{ext},")) {
+            continue;
+        }
+
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        files_searched += 1;
+        let relative = path.strip_prefix(&cwd).unwrap_or(path);
+
+        for (line_num, line) in content.lines().enumerate() {
+            let matches_pattern = if case_insensitive {
+                line.to_lowercase().contains(&pattern_lower)
+            } else {
+                line.contains(pattern)
+            };
+
+            if matches_pattern {
+                let mut context_before = Vec::new();
+                let mut context_after = Vec::new();
+
+                if context_lines > 0 {
+                    let lines: Vec<&str> = content.lines().collect();
+                    for i in (line_num.saturating_sub(context_lines)..line_num).rev() {
+                        context_before.push(json!({
+                            "line": i + 1,
+                            "text": lines.get(i).unwrap_or(&"")
+                        }));
+                    }
+                    for i in (line_num + 1)..=(line_num + context_lines).min(lines.len() - 1) {
+                        context_after.push(json!({
+                            "line": i + 1,
+                            "text": lines.get(i).unwrap_or(&"")
+                        }));
+                    }
+                }
+
+                matches.push(json!({
+                    "file": relative.to_string_lossy(),
+                    "full_path": path.to_string_lossy(),
+                    "line": line_num + 1,
+                    "text": line,
+                    "context_before": context_before,
+                    "context_after": context_after
+                }));
+
+                if matches.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        if matches.len() >= limit {
+            break;
+        }
+    }
+
+    let elapsed = start.elapsed();
+    native_result(
+        request,
+        format!(
+            "grep_content found {} matches for '{}' across {} files in {:.1}ms.",
+            matches.len(),
+            pattern,
+            files_searched,
+            elapsed.as_secs_f64() * 1000.0
+        ),
+        common_data(
+            request,
+            json!({
+                "cwd": cwd.to_string_lossy(),
+                "pattern": pattern,
+                "glob": glob_pattern,
+                "case_insensitive": case_insensitive,
+                "files_searched": files_searched,
+                "match_count": matches.len(),
+                "matches": matches
+            }),
+        ),
+    )
+}
+
+// ── apply_patch: Codex Rust apply_patch with approval gate ──
 
 fn execute_apply_patch(request: &ExecuteRequest) -> Value {
     if request.approval_id.as_deref().unwrap_or_default().trim().is_empty() {
@@ -337,6 +879,8 @@ fn execute_apply_patch(request: &ExecuteRequest) -> Value {
     }
 }
 
+// ── sandbox_exec: approval-gated command execution (Windows stub) ──
+
 fn execute_sandbox_exec(request: &ExecuteRequest) -> Value {
     if request.approval_id.as_deref().unwrap_or_default().trim().is_empty() {
         return blocked_result(
@@ -376,6 +920,110 @@ fn execute_sandbox_exec(request: &ExecuteRequest) -> Value {
             }),
         ),
     )
+}
+
+// ── review_format: format review findings ──
+
+fn execute_review_format(request: &ExecuteRequest) -> Value {
+    let findings = request
+        .arguments
+        .get("findings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let title = request
+        .arguments
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("Code Review");
+
+    let mut lines = Vec::new();
+    lines.push(format!("## {title}"));
+    lines.push(String::new());
+
+    if findings.is_empty() {
+        lines.push("No review findings to report.".to_string());
+    } else {
+        lines.push(format!("Review findings ({} items):", findings.len()));
+        lines.push(String::new());
+
+        for (idx, finding) in findings.iter().enumerate() {
+            let finding_title = finding
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or("Untitled finding");
+            let severity = finding
+                .get("severity")
+                .and_then(Value::as_str)
+                .unwrap_or("info");
+            let location = finding
+                .get("location")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let description = finding
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+
+            let severity_marker = match severity {
+                "critical" => "🔴",
+                "high" => "🟠",
+                "medium" => "🟡",
+                "low" => "🟢",
+                "info" => "ℹ️",
+                _ => "•",
+            };
+
+            lines.push(format!(
+                "{idx}. {severity_marker} **{finding_title}** [{severity}] — `{location}`"
+            ));
+            if !description.is_empty() {
+                lines.push(format!("   {description}"));
+            }
+            lines.push(String::new());
+        }
+
+        // Summary
+        let critical_count = findings.iter().filter(|f| f.get("severity").and_then(Value::as_str) == Some("critical")).count();
+        let high_count = findings.iter().filter(|f| f.get("severity").and_then(Value::as_str) == Some("high")).count();
+        let medium_count = findings.iter().filter(|f| f.get("severity").and_then(Value::as_str) == Some("medium")).count();
+        let low_count = findings.iter().filter(|f| f.get("severity").and_then(Value::as_str) == Some("low")).count();
+        let info_count = findings.iter().filter(|f| f.get("severity").and_then(Value::as_str) == Some("info")).count();
+
+        lines.push("---".to_string());
+        lines.push(format!(
+            "**Summary**: {} critical, {} high, {} medium, {} low, {} info",
+            critical_count, high_count, medium_count, low_count, info_count
+        ));
+    }
+
+    let formatted = lines.join("\n");
+
+    native_result(
+        request,
+        format!(
+            "Review formatted with {} findings.",
+            findings.len()
+        ),
+        common_data(
+            request,
+            json!({
+                "title": title,
+                "finding_count": findings.len(),
+                "formatted": formatted
+            }),
+        ),
+    )
+}
+
+// ── Helpers ──
+
+fn resolve_cwd(request: &ExecuteRequest) -> Option<PathBuf> {
+    match request.cwd.as_deref() {
+        Some(value) if !value.trim().is_empty() => Some(PathBuf::from(value)),
+        _ => std::env::current_dir().ok(),
+    }
 }
 
 fn native_result(request: &ExecuteRequest, summary: impl Into<String>, data: Value) -> Value {

@@ -32,7 +32,27 @@ interface ToolSpec {
 const TOOL_SPECS: Record<string, ToolSpec> = {
   search_files: {
     id: 'search_files',
-    summary: 'Gateway proxy: search_files is routed to the Code native runtime. When the native binary is unavailable, this stub is returned.',
+    summary: 'Fuzzy file-name search powered by Codex Rust codex-file-search (nucleo matcher). Returns ranked matches with scores.',
+    requiresApproval: false
+  },
+  glob_search: {
+    id: 'glob_search',
+    summary: 'Glob-pattern file search powered by Codex Rust ignore crate (WalkBuilder). Supports patterns like **/*.rs, src/**/*.ts.',
+    requiresApproval: false
+  },
+  read_file: {
+    id: 'read_file',
+    summary: 'Read file contents with optional line range. Returns content with line numbers. Detects binary files.',
+    requiresApproval: false
+  },
+  list_directory: {
+    id: 'list_directory',
+    summary: 'List directory entries with metadata (directories first, then files). Supports hidden file toggle.',
+    requiresApproval: false
+  },
+  grep_content: {
+    id: 'grep_content',
+    summary: 'Search file contents for a text pattern with optional glob filter, context lines, and case-insensitive mode.',
     requiresApproval: false
   },
   sandbox_exec: {
@@ -49,7 +69,7 @@ const TOOL_SPECS: Record<string, ToolSpec> = {
   },
   review_format: {
     id: 'review_format',
-    summary: 'Gateway proxy: review_format is routed to the Code native runtime. When the native binary is unavailable, this stub is returned.',
+    summary: 'Format code review findings as structured markdown with severity markers and summary.',
     requiresApproval: false
   }
 };
@@ -120,7 +140,7 @@ async function tryExecuteNativeTool(spec: ToolSpec, request: CodeToolExecuteRequ
     const timeout = setTimeout(() => {
       child.kill();
       resolve(null);
-    }, 5000);
+    }, 15_000);
 
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');

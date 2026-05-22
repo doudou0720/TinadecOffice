@@ -173,6 +173,10 @@ public sealed class CoreStoreTests
         var tools = registry.ListTools("programming");
 
         Assert.Contains(tools, tool => tool.Id == "search_files" && tool.Source == "code" && !tool.RequiresApproval);
+        Assert.Contains(tools, tool => tool.Id == "glob_search" && tool.Source == "code" && !tool.RequiresApproval);
+        Assert.Contains(tools, tool => tool.Id == "read_file" && tool.Source == "code" && !tool.RequiresApproval);
+        Assert.Contains(tools, tool => tool.Id == "list_directory" && tool.Source == "code" && !tool.RequiresApproval);
+        Assert.Contains(tools, tool => tool.Id == "grep_content" && tool.Source == "code" && !tool.RequiresApproval);
         Assert.Contains(tools, tool => tool.Id == "sandbox_exec" && tool.Source == "code" && tool.RequiresApproval);
         Assert.Contains(tools, tool => tool.Id == "apply_patch" && tool.Source == "code" && tool.RequiresApproval);
         Assert.Contains(tools, tool => tool.Id == "review_format" && tool.Source == "code" && !tool.RequiresApproval);

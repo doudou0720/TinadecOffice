@@ -17,6 +17,42 @@ public sealed class ToolRegistryService : IToolRegistry
             "/api/v1/code/tools/search_files/execute",
             ["file.search", "workspace.read", "codex-rust.future"]),
         new(
+            "glob_search",
+            "Glob Search",
+            "programming",
+            "code",
+            "read-only",
+            false,
+            "/api/v1/code/tools/glob_search/execute",
+            ["file.glob", "workspace.read", "codex-rust.future"]),
+        new(
+            "read_file",
+            "Read File",
+            "programming",
+            "code",
+            "read-only",
+            false,
+            "/api/v1/code/tools/read_file/execute",
+            ["file.read", "workspace.read", "codex-rust.active"]),
+        new(
+            "list_directory",
+            "List Directory",
+            "programming",
+            "code",
+            "read-only",
+            false,
+            "/api/v1/code/tools/list_directory/execute",
+            ["directory.list", "workspace.read", "codex-rust.active"]),
+        new(
+            "grep_content",
+            "Grep Content",
+            "programming",
+            "code",
+            "read-only",
+            false,
+            "/api/v1/code/tools/grep_content/execute",
+            ["file.grep", "workspace.read", "codex-rust.active"]),
+        new(
             "sandbox_exec",
             "Sandbox Exec",
             "programming",
@@ -33,7 +69,7 @@ public sealed class ToolRegistryService : IToolRegistry
             "workspace-write",
             true,
             "/api/v1/code/tools/apply_patch/execute",
-            ["file.write.approved", "patch.apply", "codex-rust.future"]),
+            ["file.write.approved", "patch.apply", "codex-rust.active"]),
         new(
             "review_format",
             "Review Format",
@@ -42,7 +78,7 @@ public sealed class ToolRegistryService : IToolRegistry
             "read-only",
             false,
             "/api/v1/code/tools/review_format/execute",
-            ["review.format", "workspace.read", "codex-rust.future"])
+            ["review.format", "workspace.read", "codex-rust.active"])
     ];
 
     public IReadOnlyList<ToolDescriptorDto> ListTools(string? domain = null)

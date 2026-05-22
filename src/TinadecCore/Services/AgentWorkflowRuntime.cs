@@ -44,6 +44,8 @@ public sealed class AgentWorkflowRuntime(IToolRegistry tools) : IAgentWorkflowRu
         if (assignment.AgentType is "search-agent" or "code-locator-agent")
         {
             requested.Add("search_files");
+            requested.Add("glob_search");
+            requested.Add("grep_content");
         }
 
         if (assignment.AgentType == "testing-agent")
@@ -56,9 +58,22 @@ public sealed class AgentWorkflowRuntime(IToolRegistry tools) : IAgentWorkflowRu
             requested.Add("review_format");
         }
 
+        if (assignment.AgentType is "code-reader-agent" or "context-agent" || node?.RequiredCapabilities.Contains("file.read") == true)
+        {
+            requested.Add("read_file");
+            requested.Add("list_directory");
+        }
+
         if (assignment.AllowedTools.Any(tool => tool.Contains("write", StringComparison.OrdinalIgnoreCase)))
         {
             requested.Add("apply_patch");
+        }
+
+        // Auto-assign read-only tools to any agent type that needs workspace access
+        if (requested.Count > 0)
+        {
+            requested.Add("read_file");
+            requested.Add("list_directory");
         }
 
         return requested
