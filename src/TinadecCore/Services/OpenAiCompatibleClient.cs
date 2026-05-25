@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using TinadecCore.Storage;
 using Tinadec.Contracts.Models;
+using TinadecCore.Tracing;
 
 namespace TinadecCore.Services;
 
@@ -14,11 +16,19 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
         IReadOnlyList<MessageDto> messages,
         CancellationToken cancellationToken)
     {
+        using var activity = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentInference);
+        activity?
+            .SetTag(SpanAttrs.Model, settings.Model)
+            .SetTag(SpanAttrs.BaseUrl, settings.BaseUrl)
+            .SetTag(SpanAttrs.HasApiKey, !string.IsNullOrWhiteSpace(apiKey));
+
         if (string.IsNullOrWhiteSpace(settings.BaseUrl) ||
             string.IsNullOrWhiteSpace(settings.Model))
         {
             return "TinadecCode Core is running. Add an OpenAI-compatible base URL and model to enable live model responses.";
         }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         using var request = BuildChatCompletionRequest(settings, apiKey, messages);
         using var response = await httpClient.SendAsync(request, cancellationToken);
@@ -26,8 +36,13 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
 
         if (!response.IsSuccessStatusCode)
         {
+            activity?.SetTag(SpanAttrs.StatusCode, (int)response.StatusCode);
+            activity?.SetError($"Model request failed with {(int)response.StatusCode}");
             return $"Model request failed with {(int)response.StatusCode}: {Redact(body)}";
         }
+
+        sw.Stop();
+        activity?.SetTag(SpanAttrs.LatencyMs, sw.ElapsedMilliseconds);
 
         using var document = JsonDocument.Parse(body);
         var content = document.RootElement

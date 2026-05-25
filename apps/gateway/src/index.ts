@@ -4,6 +4,7 @@ import { swagger } from '@elysiajs/swagger';
 import { Elysia } from 'elysia';
 import { executeCodeTool, listCodeToolIds, type CodeToolExecuteRequest } from './codeTools.js';
 import { coreUrl, proxyJson, proxySse } from './coreClient.js';
+import { proxyDebugJson, debugWsUrl } from './debugProxy.js';
 
 const port = Number(process.env.TINADEC_GATEWAY_PORT ?? 48730);
 
@@ -326,6 +327,99 @@ const app = new Elysia({ adapter: node() })
   })
   .get('/api/v1/agent-candidates', async ({ set }) => {
     const result = await proxyJson('/api/v1/agent-candidates');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  // --- Agent Debug Studio proxy routes ---
+  .get('/api/v1/debug/traces', async ({ query, set }) => {
+    const params = new URLSearchParams();
+    if (query.session_id) params.set('sessionId', String(query.session_id));
+    if (query.run_id) params.set('runId', String(query.run_id));
+    if (query.name) params.set('name', String(query.name));
+    if (query.status) params.set('status', String(query.status));
+    if (query.min_duration_ms) params.set('minDurationMs', String(query.min_duration_ms));
+    if (query.limit) params.set('limit', String(query.limit));
+    if (query.offset) params.set('offset', String(query.offset));
+    const result = await proxyDebugJson(`/api/v1/debug/traces?${params.toString()}`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/traces/:traceId', async ({ params, set }) => {
+    const result = await proxyDebugJson(`/api/v1/debug/traces/${params.traceId}`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/spans', async ({ query, set }) => {
+    const params = new URLSearchParams();
+    if (query.name) params.set('name', String(query.name));
+    if (query.status) params.set('status', String(query.status));
+    if (query.min_duration_ms) params.set('minDurationMs', String(query.min_duration_ms));
+    if (query.limit) params.set('limit', String(query.limit));
+    const result = await proxyDebugJson(`/api/v1/debug/spans?${params.toString()}`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/metrics', async ({ query, set }) => {
+    const params = new URLSearchParams();
+    params.set('metricName', String(query.metric_name ?? ''));
+    if (query.window_ms) params.set('windowMs', String(query.window_ms));
+    if (query.bucket_ms) params.set('bucketMs', String(query.bucket_ms));
+    const result = await proxyDebugJson(`/api/v1/debug/metrics?${params.toString()}`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/snapshot/:sessionId', async ({ params, set }) => {
+    const result = await proxyDebugJson(`/api/v1/debug/snapshot/${params.sessionId}`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/diagnostics', async ({ set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/diagnostics');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/processes', async ({ set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/processes');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/debug/simulate/message', async ({ body, set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/simulate/message', { method: 'POST', body: body as Record<string, unknown> });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/debug/simulate/model-response', async ({ body, set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/simulate/model-response', { method: 'POST', body: body as Record<string, unknown> });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/debug/simulate/tool-result', async ({ body, set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/simulate/tool-result', { method: 'POST', body: body as Record<string, unknown> });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/debug/simulate/approval-decision', async ({ body, set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/simulate/approval-decision', { method: 'POST', body: body as Record<string, unknown> });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/debug/simulate/state-patch', async ({ body, set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/simulate/state-patch', { method: 'POST', body: body as Record<string, unknown> });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/debug/breakpoints', async ({ set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/breakpoints');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/debug/breakpoints', async ({ body, set }) => {
+    const result = await proxyDebugJson('/api/v1/debug/breakpoints', { method: 'POST', body: body as Record<string, unknown> });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .delete('/api/v1/debug/breakpoints/:id', async ({ params, set }) => {
+    const result = await proxyDebugJson(`/api/v1/debug/breakpoints/${params.id}`, { method: 'DELETE' });
     setStatus(set, result.status);
     return result.data;
   })

@@ -5,6 +5,8 @@ using TinadecCore.Storage;
 using Tinadec.Contracts.Events;
 using Tinadec.Contracts.Models;
 using TinadecCore.Abstractions;
+using TinadecCore.Tracing;
+using TinadecCore.Debug;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,8 +46,25 @@ builder.Services.AddSingleton<DoctorService>();
 builder.Services.AddSingleton<OrchestratorService>();
 builder.Services.AddSingleton<ToolExecutionService>();
 
+// --- Agent Debug Studio: Tracing & Debug Services ---
+builder.Services.AddSingleton<AgentTracing>();
+builder.Services.AddSingleton<TinadecMetrics>();
+builder.Services.AddSingleton<TraceDiagnosticService>();
+builder.Services.AddSingleton<ProcessDiagnosticsService>();
+builder.Services.AddSingleton<BreakpointService>();
+builder.Services.AddSingleton<SimulationService>();
+builder.Services.AddSingleton<DebugWebSocketHandler>();
+
 var app = builder.Build();
 app.UseCors();
+
+// --- Initialize Agent Debug Studio Tracing ---
+var tracing = app.Services.GetRequiredService<AgentTracing>();
+var metrics = app.Services.GetRequiredService<TinadecMetrics>();
+tracing.Initialize(metrics);
+
+// --- Enable WebSocket for Debug Studio ---
+app.UseWebSockets();
 
 var store = app.Services.GetRequiredService<CoreStore>();
 store.Initialize();
@@ -630,6 +649,15 @@ app.MapPut("/api/v1/agents/{agentId}/mode", (string agentId, UpdateAgentModeRequ
 });
 
 app.MapGet("/api/v1/agent-candidates", (CoreStore coreStore) => Results.Ok(coreStore.ListAgentCandidates()));
+
+// --- Agent Debug Studio API Endpoints ---
+app.MapDebugApi();
+app.MapSimulationApi();
+
+app.MapGet("/api/v1/debug/ws", async (HttpContext context, DebugWebSocketHandler handler, CancellationToken cancellationToken) =>
+{
+    await handler.HandleAsync(context, cancellationToken);
+});
 
 app.Run();
 

@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using TinadecCore.Storage;
 using Tinadec.Contracts.Models;
 using TinadecCore.Abstractions;
+using TinadecCore.Tracing;
 
 namespace TinadecCore.Services;
 
@@ -19,6 +21,11 @@ public sealed class ToolExecutionService(
         CodeToolExecuteRequest request,
         CancellationToken cancellationToken = default)
     {
+        using var activity = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentToolExecution);
+        activity?
+            .SetTag(SpanAttrs.RunId, runId)
+            .SetTag(SpanAttrs.ToolId, toolId);
+
         var run = store.GetRun(runId);
         var tool = tools.Resolve(toolId);
         if (run is null || tool is null)
@@ -43,6 +50,12 @@ public sealed class ToolExecutionService(
         var approvalRequirement = capabilityPolicy.Evaluate("approval", tool);
         if (tool.RequiresApproval || approvalRequirement.Required)
         {
+            activity?.SetTag(SpanAttrs.RequiresApproval, true);
+            using var approvalSpan = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentApproval);
+            approvalSpan?
+                .SetTag(SpanAttrs.ToolId, tool.Id)
+                .SetTag(SpanAttrs.ApprovalKind, tool.DisplayName);
+
             var approval = ResolveApprovedApproval(normalizedRequest.ApprovalId);
             if (approval is null)
             {

@@ -14,6 +14,7 @@ declare global {
       minimizeWindow: () => void;
       maximizeWindow: () => void;
       closeWindow: () => void;
+      openDebugStudio: () => Promise<boolean>;
     };
   }
 }

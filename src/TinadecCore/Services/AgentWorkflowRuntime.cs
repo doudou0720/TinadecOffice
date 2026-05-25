@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Tinadec.Contracts.Models;
 using TinadecCore.Abstractions;
+using TinadecCore.Tracing;
 
 namespace TinadecCore.Services;
 
@@ -9,6 +11,8 @@ public sealed class AgentWorkflowRuntime(IToolRegistry tools) : IAgentWorkflowRu
 
     public AgentWorkflowPlanDto Compile(OrchestrationSnapshotDto snapshot)
     {
+        using var activity = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentWorkflowCompile);
+
         if (snapshot.Run is null)
         {
             return new AgentWorkflowPlanDto("", RuntimeName, []);

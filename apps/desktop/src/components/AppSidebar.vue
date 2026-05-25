@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import {
+  Bug,
   ChevronRight,
   Diamond,
   FolderOpen,
@@ -86,6 +87,10 @@ function handleNewThread() {
 }
 
 const tokenUsage = ref<number[]>([])
+
+function openDebugStudio() {
+  ;(window as unknown as { tinadec?: { openDebugStudio?: () => Promise<boolean> } }).tinadec?.openDebugStudio?.()
+}
 </script>
 
 <template>
@@ -125,6 +130,15 @@ const tokenUsage = ref<number[]>([])
       >
         <Terminal :size="16" />
         <span>{{ t('sidebar.commandCenter') }}</span>
+      </UiButton>
+      <UiButton
+        variant="ghost"
+        size="sm"
+        class="sidebar-nav-item w-full justify-start"
+        @click="openDebugStudio()"
+      >
+        <Bug :size="16" />
+        <span>Debug Studio</span>
       </UiButton>
     </nav>
 

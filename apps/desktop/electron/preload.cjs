@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('tinadec', {
   openProjectDialog: () => ipcRenderer.invoke('tinadec:open-project'),
   minimizeWindow: () => ipcRenderer.send('tinadec:minimize'),
   maximizeWindow: () => ipcRenderer.send('tinadec:maximize'),
-  closeWindow: () => ipcRenderer.send('tinadec:close')
+  closeWindow: () => ipcRenderer.send('tinadec:close'),
+  openDebugStudio: () => ipcRenderer.invoke('tinadec:open-debug-studio'),
 });

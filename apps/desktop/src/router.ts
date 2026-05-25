@@ -18,6 +18,11 @@ const router = createRouter({
       name: 'market',
       component: () => import('./pages/MarketPage.vue'),
     },
+    {
+      path: '/debug-studio',
+      name: 'debug-studio',
+      component: () => import('./pages/DebugStudioPage.vue'),
+    },
   ],
 })
 

@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const path = require('node:path');
+const { createDebugStudioWindow } = require('./debug-studio.cjs');
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
@@ -13,7 +14,7 @@ async function createWindow() {
     title: 'TinadecCode',
     frame: false,
     autoHideMenuBar: true,
-    show: false, // 先不显示窗口，等加载完成后再显示
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -25,7 +26,6 @@ async function createWindow() {
 
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  // 等待页面加载完成后再显示窗口
   win.once('ready-to-show', () => {
     win.show();
     if (isDev) {
@@ -71,6 +71,12 @@ ipcMain.on('tinadec:maximize', (event) => {
 
 ipcMain.on('tinadec:close', (event) => {
   BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+// --- Agent Debug Studio IPC ---
+ipcMain.handle('tinadec:open-debug-studio', async () => {
+  await createDebugStudioWindow();
+  return true;
 });
 
 app.whenReady().then(async () => {

@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using TinadecCore.Storage;
 using Tinadec.Contracts.Models;
 using TinadecCore.Abstractions;
+using TinadecCore.Tracing;
 
 namespace TinadecCore.Services;
 
@@ -32,6 +34,11 @@ public sealed class OrchestratorService
 
     public OrchestrationSnapshotDto CreateRunForMessage(string sessionId, string userMessageId, string userContent)
     {
+        using var activity = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentTurn);
+        activity?
+            .SetTag(SpanAttrs.SessionId, sessionId)
+            .SetTag(SpanAttrs.UserMessageId, userMessageId);
+
         var snapshot = _store.CreateOrchestrationRun(sessionId, userMessageId, userContent);
         if (snapshot.Run is null)
         {
@@ -121,6 +128,11 @@ public sealed class OrchestratorService
             return;
         }
 
+        using var dispatchActivity = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentToolDispatch);
+        dispatchActivity?
+            .SetTag(SpanAttrs.RunId, snapshot.Run.Id)
+            .SetTag(SpanAttrs.AutoDispatch, true);
+
         var workflow = _workflowRuntime.Compile(snapshot);
         var session = _store.ListSessions(null).FirstOrDefault(item => item.Id == snapshot.Run.SessionId);
         var project = session is null
@@ -137,6 +149,12 @@ public sealed class OrchestratorService
                 {
                     continue;
                 }
+
+                using var toolSpan = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentToolExecution);
+                toolSpan?
+                    .SetTag(SpanAttrs.ToolId, tool.Id)
+                    .SetTag(SpanAttrs.TaskNodeId, step.TaskNodeId)
+                    .SetTag(SpanAttrs.PermissionMode, "read-only");
 
                 Publish("tool.execution.requested", snapshot.Run.SessionId, new JsonObject
                 {
