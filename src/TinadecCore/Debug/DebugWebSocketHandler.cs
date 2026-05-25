@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
+using TinadecCore.Services;
 using TinadecCore.Tracing;
 
 namespace TinadecCore.Debug;

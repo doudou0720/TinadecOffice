@@ -33,7 +33,7 @@ public sealed class TraceDiagnosticService
         _recentSpans.Enqueue(span);
         TrimQueue(_recentSpans, MaxRecentSpans);
 
-        if (span.Status == "ERROR")
+        if (span.FailureCount > 0)
         {
             _recentFailures.Enqueue(new RecentFailure
             {

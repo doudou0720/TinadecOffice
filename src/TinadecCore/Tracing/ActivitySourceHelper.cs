@@ -75,7 +75,7 @@ public static class ActivityExtensions
     {
         if (activity is null) return null;
         var tags = attributes is null
-            ? ActivityTagsCollection.Empty
+            ? new ActivityTagsCollection()
             : new ActivityTagsCollection(attributes);
         activity.AddEvent(new ActivityEvent(name, tags: tags));
         return activity;

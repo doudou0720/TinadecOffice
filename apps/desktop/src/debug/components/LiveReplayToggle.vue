@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const mode = ref<'live' | 'replay'>('live')
 </script>
 
@@ -10,12 +12,12 @@ const mode = ref<'live' | 'replay'>('live')
       class="toggle-btn"
       :class="{ active: mode === 'live' }"
       @click="mode = 'live'"
-    >LIVE</button>
+    >{{ t('debugStudio.liveMode') }}</button>
     <button
       class="toggle-btn"
       :class="{ active: mode === 'replay' }"
       @click="mode = 'replay'"
-    >REPLAY</button>
+    >{{ t('debugStudio.replayMode') }}</button>
   </div>
 </template>
 
@@ -23,14 +25,25 @@ const mode = ref<'live' | 'replay'>('live')
 .live-replay-toggle {
   display: flex;
   background: #21262d;
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: hidden;
   border: 1px solid #30363d;
 }
 .toggle-btn {
-  background: none; border: none; color: #8b949e;
-  padding: 2px 10px; font-size: 10px; font-weight: 700; cursor: pointer;
+  background: none;
+  border: none;
+  color: #8b949e;
+  padding: 3px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: background 0.12s, color 0.12s;
 }
-.toggle-btn.active { background: #30363d; color: #e6edf3; }
+.toggle-btn:hover { color: #c9d1d9; }
+.toggle-btn.active {
+  background: #30363d;
+  color: #e6edf3;
+}
 .toggle-btn:first-child.active { color: #3fb950; }
 </style>

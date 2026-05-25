@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useDebugWebSocket } from './composables/useDebugWebSocket'
 import { useTraceData } from './composables/useTraceData'
 import { useSimulation } from './composables/useSimulation'
@@ -14,6 +15,7 @@ import SessionSelector from './components/SessionSelector.vue'
 import LiveReplayToggle from './components/LiveReplayToggle.vue'
 import { Bug, Minus, Square, X } from '@lucide/vue'
 
+const { t } = useI18n()
 const ws = useDebugWebSocket()
 const traceData = useTraceData()
 const simulation = useSimulation()
@@ -44,26 +46,36 @@ onMounted(() => {
     <header class="debug-titlebar">
       <div class="debug-titlebar-left">
         <Bug :size="16" class="debug-icon" />
-        <span class="debug-title">Agent Debug Studio</span>
+        <span class="debug-title">{{ t('debugStudio.title') }}</span>
+        <div class="titlebar-divider" />
         <SessionSelector />
         <LiveReplayToggle />
       </div>
       <div class="debug-titlebar-right">
         <span class="ws-status" :class="{ connected: ws.connected.value }">
-          {{ ws.connected.value ? 'LIVE' : 'OFFLINE' }}
+          {{ ws.connected.value ? t('debugStudio.live') : t('debugStudio.offline') }}
         </span>
-        <button class="window-btn" @click="minimizeWindow"><Minus :size="14" /></button>
-        <button class="window-btn" @click="maximizeWindow"><Square :size="12" /></button>
-        <button class="window-btn close" @click="closeWindow"><X :size="14" /></button>
+        <div class="titlebar-divider" />
+        <button class="window-btn" @click="minimizeWindow" :title="t('app.minimize')"><Minus :size="14" /></button>
+        <button class="window-btn" @click="maximizeWindow" :title="t('app.maximize')"><Square :size="12" /></button>
+        <button class="window-btn close" @click="closeWindow" :title="t('app.close')"><X :size="14" /></button>
       </div>
     </header>
 
     <!-- Tab bar -->
     <nav class="debug-tabs">
-      <button class="debug-tab" :class="{ active: activeTab === 'timeline' }" @click="activeTab = 'timeline'">Timeline</button>
-      <button class="debug-tab" :class="{ active: activeTab === 'graph' }" @click="activeTab = 'graph'">Agent Graph</button>
-      <button class="debug-tab" :class="{ active: activeTab === 'metrics' }" @click="activeTab = 'metrics'">Metrics</button>
-      <button class="debug-tab" :class="{ active: activeTab === 'diagnostics' }" @click="activeTab = 'diagnostics'">Diagnostics</button>
+      <button class="debug-tab" :class="{ active: activeTab === 'timeline' }" @click="activeTab = 'timeline'">
+        {{ t('debugStudio.tabTimeline') }}
+      </button>
+      <button class="debug-tab" :class="{ active: activeTab === 'graph' }" @click="activeTab = 'graph'">
+        {{ t('debugStudio.tabAgentGraph') }}
+      </button>
+      <button class="debug-tab" :class="{ active: activeTab === 'metrics' }" @click="activeTab = 'metrics'">
+        {{ t('debugStudio.tabMetrics') }}
+      </button>
+      <button class="debug-tab" :class="{ active: activeTab === 'diagnostics' }" @click="activeTab = 'diagnostics'">
+        {{ t('debugStudio.tabDiagnostics') }}
+      </button>
     </nav>
 
     <!-- Main content area -->
@@ -80,9 +92,7 @@ onMounted(() => {
           />
         </div>
         <div class="debug-timeline-right">
-          <InspectorPanel
-            :span="traceData.selectedSpan.value"
-          />
+          <InspectorPanel :span="traceData.selectedSpan.value" />
         </div>
       </div>
 
@@ -116,24 +126,32 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* ============================================================
+   Debug Studio – Layout & Styling
+   ============================================================ */
+
 .debug-studio {
   display: flex;
   flex-direction: column;
   height: 100vh;
   background: #0d1117;
   color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* ---- Title Bar ---- */
 .debug-titlebar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: 0 8px 0 12px;
+  height: 36px;
   background: #161b22;
   border-bottom: 1px solid #30363d;
   -webkit-app-region: drag;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .debug-titlebar-left,
@@ -145,15 +163,28 @@ onMounted(() => {
 }
 
 .debug-icon { color: #58a6ff; }
-.debug-title { font-size: 13px; font-weight: 600; }
+
+.debug-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.titlebar-divider {
+  width: 1px;
+  height: 16px;
+  background: #30363d;
+  flex-shrink: 0;
+}
 
 .ws-status {
   font-size: 10px;
   font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 2px 8px;
+  border-radius: 10px;
   background: #6e7681;
   color: #fff;
+  letter-spacing: 0.5px;
 }
 .ws-status.connected {
   background: #238636;
@@ -169,16 +200,19 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.12s;
 }
-.window-btn:hover { background: #30363d; }
+.window-btn:hover { background: #30363d; color: #e6edf3; }
 .window-btn.close:hover { background: #da3633; color: #fff; }
 
+/* ---- Tab Bar ---- */
 .debug-tabs {
   display: flex;
   gap: 0;
   background: #161b22;
   border-bottom: 1px solid #30363d;
   padding: 0 12px;
+  flex-shrink: 0;
 }
 
 .debug-tab {
@@ -187,33 +221,45 @@ onMounted(() => {
   color: #8b949e;
   padding: 8px 16px;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  transition: all 0.15s;
+  transition: color 0.15s, border-color 0.15s;
 }
-.debug-tab:hover { color: #e6edf3; }
+.debug-tab:hover { color: #c9d1d9; }
 .debug-tab.active {
   color: #58a6ff;
   border-bottom-color: #58a6ff;
 }
 
+/* ---- Main Content ---- */
 .debug-main {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .debug-timeline-layout {
   display: flex;
   height: 100%;
 }
-.debug-timeline-left { flex: 3; border-right: 1px solid #30363d; overflow: auto; }
-.debug-timeline-right { flex: 2; overflow: auto; }
+.debug-timeline-left {
+  flex: 3;
+  min-width: 0;
+  border-right: 1px solid #30363d;
+  overflow: auto;
+}
+.debug-timeline-right {
+  flex: 2;
+  min-width: 0;
+  overflow: auto;
+}
 
 .debug-graph-layout,
 .debug-metrics-layout,
 .debug-diagnostics-layout {
   height: 100%;
   overflow: auto;
-  padding: 16px;
+  padding: 20px;
 }
 </style>

@@ -111,7 +111,6 @@ public sealed class AgentTracing
             meterBuilder.AddOtlpExporter(otlpOptions =>
             {
                 otlpOptions.Endpoint = new Uri(Options.OtlpMetricsUrl);
-                otlpOptions.ExportIntervalMilliseconds = Options.OtlpExportIntervalMs > 0 ? Options.OtlpExportIntervalMs : 10000;
             });
         }
 

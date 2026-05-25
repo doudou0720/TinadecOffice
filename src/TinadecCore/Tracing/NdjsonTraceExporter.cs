@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenTelemetry;
 
 namespace TinadecCore.Tracing;
 
@@ -175,7 +176,7 @@ public sealed class NdjsonTraceExporter : BaseProcessor<Activity>
             return new TraceEvent
             {
                 Name = e.Name,
-                TimeUnixNano = e.Timestamp.ToUnixTimeNanoseconds().ToString(),
+                TimeUnixNano = e.Timestamp.UtcDateTime.ToUnixTimeNanoseconds().ToString(),
                 Attributes = evtAttrs
             };
         }).ToArray();
