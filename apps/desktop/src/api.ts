@@ -355,20 +355,37 @@ export interface OrchestrationSnapshotDto {
 const gatewayUrl = window.tinadec?.gatewayUrl?.() ?? 'http://127.0.0.1:48730';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${gatewayUrl}${path}`, {
-    ...init,
-    headers: {
-      accept: 'application/json',
-      ...(init?.body ? { 'content-type': 'application/json' } : {}),
-      ...(init?.headers ?? {})
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${gatewayUrl}${path}`, {
+      ...init,
+      headers: {
+        accept: 'application/json',
+        ...(init?.body ? { 'content-type': 'application/json' } : {}),
+        ...(init?.headers ?? {})
+      }
+    });
+  } catch (err) {
+    // fetch() itself failed (network error, CORS blocked, etc.)
+    const msg = err instanceof Error ? err.message : 'Network request failed';
+    throw new Error(`Cannot connect to backend (${gatewayUrl}): ${msg}`);
+  }
 
   const text = await response.text();
-  const data = text.length > 0 ? JSON.parse(text) : null;
+  let data: unknown = null;
+  if (text.length > 0) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Response body is not valid JSON – surface the raw text for debugging
+      throw new Error(`Invalid response from server: ${text.substring(0, 200)}`);
+    }
+  }
 
   if (!response.ok) {
-    const message = data?.message ?? data?.error?.message ?? response.statusText;
+    const message = (data as Record<string, unknown>)?.message
+      ?? ((data as Record<string, Record<string, unknown>>)?.error)?.message
+      ?? response.statusText;
     throw new Error(message);
   }
 

@@ -1,4 +1,3 @@
-import { cors } from '@elysiajs/cors';
 import { node } from '@elysiajs/node';
 import { swagger } from '@elysiajs/swagger';
 import { Elysia } from 'elysia';
@@ -12,10 +11,57 @@ function setStatus(set: { status?: number | string }, status: number) {
   set.status = status;
 }
 
+/** Allowed CORS origins (local dev + Electron file:// + tauri://) */
+const ALLOWED_ORIGINS: (string | RegExp)[] = [
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+  /^http:\/\/localhost:\d+$/,
+  'file://',
+  'tauri://localhost',
+  'https://tauri.localhost',
+];
+
+function isOriginAllowed(origin: string): boolean {
+  return ALLOWED_ORIGINS.some((pattern) => {
+    if (typeof pattern === 'string') return pattern === origin;
+    return pattern.test(origin);
+  });
+}
+
 const app = new Elysia({ adapter: node() })
-  .use(cors({
-    origin: [/^http:\/\/127\.0\.0\.1:\d+$/, /^http:\/\/localhost:\d+$/]
-  }))
+  // Manual CORS middleware – the @elysiajs/cors plugin returns 400 on
+  // OPTIONS preflight when used with the Node.js adapter.
+  .onRequest(({ request, set }) => {
+    const origin = request.headers.get('origin');
+
+    const corsHeaders: Record<string, string> = {};
+    if (origin && isOriginAllowed(origin)) {
+      corsHeaders['access-control-allow-origin'] = origin;
+      corsHeaders['access-control-allow-credentials'] = 'true';
+      corsHeaders['vary'] = 'Origin';
+    }
+
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      const requestMethod = request.headers.get('access-control-request-method');
+      const requestHeaders = request.headers.get('access-control-request-headers');
+      if (requestMethod) {
+        corsHeaders['access-control-allow-methods'] = requestMethod;
+      }
+      if (requestHeaders) {
+        corsHeaders['access-control-allow-headers'] = requestHeaders;
+      } else {
+        corsHeaders['access-control-allow-headers'] = 'accept, content-type, authorization';
+      }
+      corsHeaders['access-control-max-age'] = '86400';
+
+      set.headers = { ...set.headers, ...corsHeaders };
+      set.status = 204;
+      return '';
+    }
+
+    // For non-preflight requests, just set CORS headers
+    Object.assign(set.headers, corsHeaders);
+  })
   .use(swagger({
     path: '/docs',
     documentation: {
