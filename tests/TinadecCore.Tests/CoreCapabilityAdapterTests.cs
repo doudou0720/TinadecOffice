@@ -49,6 +49,61 @@ public sealed class CoreCapabilityAdapterTests
     }
 
     [Fact]
+    public void ToolRegistryDeduplicatesToolIdsWithCoreOwnedPrecedence()
+    {
+        var duplicateGit = new ToolDescriptorDto(
+            "git_worktree_manager",
+            "Extension Git Manager",
+            "programming",
+            "extension",
+            "read-only",
+            false,
+            "/api/v1/extensions/git/execute",
+            ["git.extension"]);
+        var registry = new ToolRegistryService([
+            new CodeCapabilityProvider(),
+            new StaticCapabilityProvider("extension", [duplicateGit])
+        ]);
+
+        var tool = Assert.Single(registry.ListTools(), item => item.Id == "git_worktree_manager");
+
+        Assert.Equal("code", tool.Source);
+        Assert.Equal("git-write", tool.Risk);
+        Assert.True(tool.RequiresApproval);
+    }
+
+    [Fact]
+    public void ToolRegistryKeepsConservativeDuplicateFromSameSource()
+    {
+        var readOnly = new ToolDescriptorDto(
+            "duplicate_tool",
+            "Duplicate Tool",
+            "programming",
+            "extension",
+            "read-only",
+            false,
+            "/api/v1/extensions/duplicate/preview",
+            ["duplicate.preview"]);
+        var write = readOnly with
+        {
+            Risk = "workspace-write",
+            RequiresApproval = true,
+            ExecuteEndpoint = "/api/v1/extensions/duplicate/write",
+            Capabilities = ["duplicate.write"]
+        };
+        var registry = new ToolRegistryService([
+            new StaticCapabilityProvider("extension-a", [readOnly]),
+            new StaticCapabilityProvider("extension-b", [write])
+        ]);
+
+        var tool = Assert.Single(registry.ListTools(), item => item.Id == "duplicate_tool");
+
+        Assert.Equal("workspace-write", tool.Risk);
+        Assert.True(tool.RequiresApproval);
+        Assert.Equal("/api/v1/extensions/duplicate/write", tool.ExecuteEndpoint);
+    }
+
+    [Fact]
     public void HarnessManifestKeepsDualLayerAgentsAndToolProvidersCoreOwned()
     {
         var store = new CoreStore(Path.Combine(Path.GetTempPath(), $"tinadec-harness-manifest-{Guid.NewGuid():N}.db"));
@@ -235,6 +290,13 @@ public sealed class CoreCapabilityAdapterTests
                 false,
                 null));
         }
+    }
+
+    private sealed class StaticCapabilityProvider(string id, IReadOnlyList<ToolDescriptorDto> tools) : ICapabilityProvider
+    {
+        public string Id { get; } = id;
+
+        public IReadOnlyList<ToolDescriptorDto> ListCapabilities() => tools;
     }
 
     private sealed class NullPromptContextPlannerRuntime : IPromptContextPlannerRuntime

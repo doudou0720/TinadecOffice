@@ -210,7 +210,11 @@ public sealed class ToolRegistryService : IToolRegistry
 
     public IReadOnlyList<ToolDescriptorDto> ListTools(string? domain = null)
     {
-        var tools = _providers.SelectMany(provider => provider.ListCapabilities()).ToArray();
+        var tools = _providers
+            .SelectMany(provider => provider.ListCapabilities())
+            .GroupBy(tool => tool.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(SelectCanonicalTool)
+            .ToArray();
         if (string.IsNullOrWhiteSpace(domain))
         {
             return tools;
@@ -225,5 +229,40 @@ public sealed class ToolRegistryService : IToolRegistry
     {
         return ListTools().FirstOrDefault(tool =>
             string.Equals(tool.Id, toolId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ToolDescriptorDto SelectCanonicalTool(IGrouping<string, ToolDescriptorDto> duplicates)
+    {
+        return duplicates
+            .OrderBy(tool => SourceSortKey(tool.Source))
+            .ThenByDescending(tool => tool.RequiresApproval)
+            .ThenByDescending(tool => RiskSortKey(tool.Risk))
+            .ThenBy(tool => tool.Source, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(tool => tool.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .First();
+    }
+
+    private static int SourceSortKey(string source)
+    {
+        return source.ToLowerInvariant() switch
+        {
+            "core" => 0,
+            "code" => 1,
+            "codex-rust" => 2,
+            _ => 3
+        };
+    }
+
+    private static int RiskSortKey(string risk)
+    {
+        return risk.ToLowerInvariant() switch
+        {
+            "read-only" => 0,
+            "workspace-write" => 1,
+            "shell" => 2,
+            "git-write" => 3,
+            "external-url" => 4,
+            _ => 5
+        };
     }
 }
