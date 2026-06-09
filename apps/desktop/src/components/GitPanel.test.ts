@@ -138,8 +138,18 @@ const pushPlanResult: CodeToolExecuteResultDto = {
     upstream: null,
     ahead: 1,
     behind: 0,
+    diff_stat: ' src/app.ts | 2 +-\n README.md | 1 +',
+    remotes: [
+      'origin https://github.com/example/repo.git (fetch)',
+      'origin https://github.com/example/repo.git (push)'
+    ],
+    recent_commits: [
+      'abc1234 (HEAD -> main) last change',
+      'def5678 initial'
+    ],
     push_ready: false,
     push_blockers: ['no upstream'],
+    suggested_commands: ['git status --short --branch', 'git add <paths>', 'git commit -m "<message>"'],
     worktrees: [
       { branch: 'main', path: 'D:/repo' }
     ]
@@ -196,6 +206,10 @@ describe('GitPanel', () => {
     });
     expect(wrapper.text()).toContain('main');
     expect(wrapper.text()).toContain('src/app.ts');
+    expect(wrapper.text()).toContain('src/app.ts | 2 +-');
+    expect(wrapper.text()).toContain('origin https://github.com/example/repo.git (fetch)');
+    expect(wrapper.text()).toContain('abc1234 (HEAD -> main) last change');
+    expect(wrapper.text()).toContain('git status --short --branch');
 
     await wrapper.findAll('.git-section-tab')[1].trigger('click');
     await nextTick();

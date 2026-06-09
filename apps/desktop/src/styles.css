@@ -3479,6 +3479,38 @@ label {
   font-size: 13px;
 }
 
+.git-info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.git-info-panel {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  max-height: 132px;
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid var(--border-muted);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.git-info-panel span,
+.git-info-panel code {
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.git-info-panel code {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+
 .git-sections {
   display: flex;
   flex-wrap: wrap;

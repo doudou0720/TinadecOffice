@@ -100,6 +100,8 @@ export default {
     gitAheadBehind: 'Ahead / Behind',
     gitBlockers: '阻断项',
     gitDiffStat: '差异统计',
+    gitRemotes: '远端',
+    gitRecentCommits: '最近提交',
     gitSuggestedCommands: '建议命令',
     gitRequestPushApproval: '请求推送审批',
     gitRequestPushApprovalTitle: '为这次 Git 推送创建 Core 审批请求',

@@ -100,6 +100,8 @@ export default {
     gitAheadBehind: 'Ahead / Behind',
     gitBlockers: 'Blockers',
     gitDiffStat: 'Diff Stat',
+    gitRemotes: 'Remotes',
+    gitRecentCommits: 'Recent Commits',
     gitSuggestedCommands: 'Suggested Commands',
     gitRequestPushApproval: 'Request push approval',
     gitRequestPushApprovalTitle: 'Create a Core approval request for this Git push',

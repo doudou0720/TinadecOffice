@@ -53,6 +53,9 @@ interface GitPreviewData {
 }
 
 interface GitPushPlanData extends GitPreviewData {
+  diff_stat?: string
+  recent_commits?: string[]
+  remotes?: string[]
   push_ready?: boolean
   push_blockers?: string[]
   suggested_commands?: string[]
@@ -126,6 +129,16 @@ const canDecidePushApproval = computed(() => pushApproval.value?.status === 'pen
 const pushCommand = computed(() => noUpstreamOnly.value ? `git push -u origin ${pushData.value.branch ?? 'HEAD'}` : 'git push')
 const totalChanges = computed(() => statusFiles.value.length)
 const worktrees = computed(() => Array.isArray(pushData.value.worktrees) ? pushData.value.worktrees as Array<Record<string, unknown>> : [])
+const diffStatLines = computed(() => stringListFromText(pushData.value.diff_stat))
+const recentCommits = computed(() => stringList(pushData.value.recent_commits).slice(0, 5))
+const remotes = computed(() => stringList(pushData.value.remotes))
+const suggestedCommands = computed(() => stringList(pushData.value.suggested_commands))
+const hasRepositoryDetails = computed(() =>
+  diffStatLines.value.length > 0 ||
+  recentCommits.value.length > 0 ||
+  remotes.value.length > 0 ||
+  suggestedCommands.value.length > 0
+)
 
 async function loadGit() {
   if (!props.currentProjectPath) {
@@ -334,6 +347,18 @@ function approvalStatusLabel(approval: ApprovalDto | null): string {
   return `${approval.id} / ${approval.status}`
 }
 
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : []
+}
+
+function stringListFromText(value: unknown): string[] {
+  return typeof value === 'string'
+    ? value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    : []
+}
+
 function decideGitApproval(approval: ApprovalDto | null, decision: 'approved' | 'rejected') {
   if (!approval || approval.status !== 'pending') return
   emit('decide-approval', approval, decision)
@@ -410,6 +435,25 @@ watch(activeParsedFiles, () => {
           <span>{{ t('context.gitChangedFiles') }}</span>
           <strong>{{ totalChanges }}</strong>
         </div>
+      </div>
+
+      <div v-if="hasRepositoryDetails" class="git-info-grid">
+        <section v-if="diffStatLines.length" class="git-info-panel">
+          <div class="git-panel-subtitle">{{ t('context.gitDiffStat') }}</div>
+          <code v-for="line in diffStatLines" :key="line">{{ line }}</code>
+        </section>
+        <section v-if="remotes.length" class="git-info-panel">
+          <div class="git-panel-subtitle">{{ t('context.gitRemotes') }}</div>
+          <span v-for="remote in remotes" :key="remote">{{ remote }}</span>
+        </section>
+        <section v-if="recentCommits.length" class="git-info-panel">
+          <div class="git-panel-subtitle">{{ t('context.gitRecentCommits') }}</div>
+          <code v-for="commit in recentCommits" :key="commit">{{ commit }}</code>
+        </section>
+        <section v-if="suggestedCommands.length" class="git-info-panel">
+          <div class="git-panel-subtitle">{{ t('context.gitSuggestedCommands') }}</div>
+          <code v-for="command in suggestedCommands" :key="command">{{ command }}</code>
+        </section>
       </div>
 
       <div class="git-sections">
@@ -524,7 +568,7 @@ watch(activeParsedFiles, () => {
             <span>{{ t('context.gitExecuteIndexUpdate') }}</span>
           </button>
         </div>
-        <span class="git-action-note">{{ t('context.gitIndexAction') }}: {{ indexAction ?? '-' }} · {{ t('context.gitApprovalStatus') }}: {{ approvalStatusLabel(indexApproval) }}</span>
+        <span class="git-action-note">{{ t('context.gitIndexAction') }}: {{ indexAction ?? '-' }} / {{ t('context.gitApprovalStatus') }}: {{ approvalStatusLabel(indexApproval) }}</span>
         <div v-if="canDecideIndexApproval" class="git-approval-inline-actions">
           <button class="icon-button approve" :title="t('approval.approve')" @click="decideGitApproval(indexApproval, 'approved')">
             <CheckCircle2 :size="14" />
