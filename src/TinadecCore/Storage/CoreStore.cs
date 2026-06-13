@@ -3540,7 +3540,7 @@ public sealed class CoreStore
     private static string NormalizeConnectionKind(string? value, string driver)
     {
         var normalized = NormalizePlain(value, InferConnectionKind(driver)).ToLowerInvariant();
-        return normalized is "api-key" or "cli" or "local-server" or "http" ? normalized : InferConnectionKind(driver);
+        return normalized is "api-key" or "cli" or "local-server" or "http" or "public-api" ? normalized : InferConnectionKind(driver);
     }
 
     private static string InferConnectionKind(string driver)
@@ -3553,9 +3553,14 @@ public sealed class CoreStore
             return "cli";
         }
 
-        if (normalized is "ollama" or "vllm" or "sglang")
+        if (ProviderTemplateRules.IsLocalOpenAiCompatibleDriver(normalized))
         {
             return "local-server";
+        }
+
+        if (normalized is "pollinations")
+        {
+            return "public-api";
         }
 
         return "api-key";
@@ -3570,9 +3575,12 @@ public sealed class CoreStore
                 : ["agent", "cli", "workspace"];
         }
 
-        if (connectionKind.Equals("local-server", StringComparison.OrdinalIgnoreCase))
+        if (connectionKind.Equals("local-server", StringComparison.OrdinalIgnoreCase)
+            || connectionKind.Equals("public-api", StringComparison.OrdinalIgnoreCase))
         {
-            return ["chat", "local", "no-api-key"];
+            return connectionKind.Equals("local-server", StringComparison.OrdinalIgnoreCase)
+                ? ["chat", "local", "no-api-key"]
+                : ["chat", "streaming", "public-api", "no-api-key"];
         }
 
         return ["chat", "streaming", "tool-calls"];

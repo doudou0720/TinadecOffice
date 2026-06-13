@@ -189,6 +189,10 @@ public sealed class OpenAiCompatibleClientTests
             "openai-compatible", null, null, "https://api.openai.com/v1", "gpt-4", null, "openai-compatible", "http", "openai-compatible", false);
         var deepSeekContext = new ResolvedModelInvocationContextDto(
             "deepseek", null, null, "https://api.deepseek.com/v1", "deepseek-chat", null, "deepseek", "http", "deepseek", false);
+        var pollinationsContext = new ResolvedModelInvocationContextDto(
+            "pollinations", null, null, "https://gen.pollinations.ai/v1", "openai", null, "pollinations", "public-api", "pollinations", false);
+        var lmStudioContext = new ResolvedModelInvocationContextDto(
+            "lmstudio", null, null, "http://localhost:1234/v1", "default", null, "lmstudio", "local-server", "lmstudio", false);
         var anthropicContext = new ResolvedModelInvocationContextDto(
             "anthropic", null, null, "https://api.anthropic.com/v1", "claude-sonnet-4-6", null, "anthropic", "http", "anthropic", false);
         var cliContext = new ResolvedModelInvocationContextDto(
@@ -196,8 +200,48 @@ public sealed class OpenAiCompatibleClientTests
 
         Assert.True(runtime.CanHandle(openAiContext));
         Assert.True(runtime.CanHandle(deepSeekContext));
+        Assert.True(runtime.CanHandle(pollinationsContext));
+        Assert.False(runtime.CanHandle(lmStudioContext));
         Assert.False(runtime.CanHandle(anthropicContext));
         Assert.False(runtime.CanHandle(cliContext));
+    }
+
+    [Fact]
+    public async Task ModelInvocationRuntime_AllowsPublicNoLoginOpenAiCompatibleProviderWithoutKey()
+    {
+        var provider = new ModelProviderInstanceDto(
+            "provider-pollinations",
+            "pollinations",
+            "Pollinations",
+            "public-api",
+            "https://gen.pollinations.ai/v1",
+            "openai",
+            false,
+            null,
+            null,
+            null,
+            null,
+            ["chat", "streaming", "public-api", "no-api-key"],
+            true,
+            "ready",
+            "Provider is ready.",
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow);
+        var routeResolver = new FixedRouteResolver(new ResolvedModelInvocationContextDto(
+            "chat", null, provider, provider.BaseUrl!, provider.Model!, null, provider.Driver, provider.ConnectionKind, provider.Id, false));
+        var invocationRuntime = new ModelInvocationRuntime(
+            routeResolver,
+            new StubCredentialResolver(null),
+            [new StubProviderRuntime("openai-compatible", context =>
+                string.Equals(context.Driver, "pollinations", StringComparison.OrdinalIgnoreCase))]);
+
+        var result = await invocationRuntime.InvokeAsync(
+            "sess_1", "chat", [new MessageDto("msg_1", "sess_1", "user", "Hello", DateTimeOffset.UtcNow)], CancellationToken.None);
+
+        Assert.Equal("executed", result.Status);
+        Assert.Equal("Handled by openai-compatible", result.Content);
+        Assert.Equal("provider-pollinations", result.Context.ProviderInstanceId);
     }
 
     [Fact]

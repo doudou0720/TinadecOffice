@@ -802,6 +802,7 @@ async function saveProvider() {
 function connectionKindLabel(kind: string) {
   if (kind === 'cli') return t('settings.connectionKindCli')
   if (kind === 'local-server') return t('settings.connectionKindLocal')
+  if (kind === 'public-api') return t('settings.connectionKindPublicApi')
   return t('settings.connectionKindApiKey')
 }
 

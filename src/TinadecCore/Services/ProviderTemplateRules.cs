@@ -7,17 +7,34 @@ public static class ProviderTemplateRules
         "openai-compatible",
         "deepseek",
         "openrouter",
+        "pollinations",
         "groq",
         "togetherai",
         "fireworks",
         "ollama",
         "vllm",
-        "sglang"
+        "sglang",
+        "lmstudio",
+        "llamacpp"
+    };
+
+    private static readonly HashSet<string> LocalOpenAiCompatibleDrivers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ollama",
+        "vllm",
+        "sglang",
+        "lmstudio",
+        "llamacpp"
     };
 
     public static bool IsOpenAiCompatibleDriver(string? driver)
     {
         return !string.IsNullOrWhiteSpace(driver) && OpenAiCompatibleDrivers.Contains(driver);
+    }
+
+    public static bool IsLocalOpenAiCompatibleDriver(string? driver)
+    {
+        return !string.IsNullOrWhiteSpace(driver) && LocalOpenAiCompatibleDrivers.Contains(driver);
     }
 
     public static bool RequiresApiKey(string? driver, string? connectionKind, IReadOnlyList<string>? capabilities = null)

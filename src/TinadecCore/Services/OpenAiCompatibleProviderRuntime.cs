@@ -15,8 +15,10 @@ public sealed class OpenAiCompatibleProviderRuntime(
 
     public bool CanHandle(ResolvedModelInvocationContextDto context)
     {
-        return ProviderTemplateRules.IsOpenAiCompatibleDriver(context.Driver)
-            || ProviderTemplateRules.IsOpenAiCompatibleDriver(context.Provider?.Driver);
+        return !ProviderTemplateRules.IsLocalOpenAiCompatibleDriver(context.Driver)
+            && !ProviderTemplateRules.IsLocalOpenAiCompatibleDriver(context.Provider?.Driver)
+            && (ProviderTemplateRules.IsOpenAiCompatibleDriver(context.Driver)
+                || ProviderTemplateRules.IsOpenAiCompatibleDriver(context.Provider?.Driver));
     }
 
     public async Task<ModelInvocationResultDto> GenerateAsync(

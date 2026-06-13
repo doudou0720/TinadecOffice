@@ -256,9 +256,7 @@ public sealed class LocalHttpProviderRuntime(HttpClient httpClient, OpenAiCompat
 
     private static bool IsLocalServerOpenAiCompatibleDriver(string? driver)
     {
-        return string.Equals(driver, "ollama", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(driver, "vllm", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(driver, "sglang", StringComparison.OrdinalIgnoreCase);
+        return ProviderTemplateRules.IsLocalOpenAiCompatibleDriver(driver);
     }
 
     private static LocalHttpAdapterStrategy ResolveAdapterStrategy(string? driver)
@@ -266,7 +264,7 @@ public sealed class LocalHttpProviderRuntime(HttpClient httpClient, OpenAiCompat
         return driver?.Trim().ToLowerInvariant() switch
         {
             "local-http-openai-compatible" => LocalHttpAdapterStrategy.OpenAiCompatible,
-            "ollama" or "vllm" or "sglang" => LocalHttpAdapterStrategy.OpenAiCompatible,
+            "ollama" or "vllm" or "sglang" or "lmstudio" or "llamacpp" => LocalHttpAdapterStrategy.OpenAiCompatible,
             "local-http-ollama" => LocalHttpAdapterStrategy.Ollama,
             _ => LocalHttpAdapterStrategy.Generic
         };

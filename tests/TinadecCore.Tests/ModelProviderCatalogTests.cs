@@ -79,14 +79,37 @@ public sealed class ModelProviderCatalogTests
         Assert.Equal(drivers.Length, drivers.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
+    [Theory]
+    [InlineData("pollinations", "public-api", "openai-compatible", "none")]
+    [InlineData("lmstudio", "local-server", "local-http", "none")]
+    [InlineData("llamacpp", "local-server", "local-http", "none")]
+    public void NoLoginFreeTemplatesExposeCredentialFreeRuntimeMetadata(
+        string driver,
+        string expectedConnectionKind,
+        string expectedRuntimeFamily,
+        string expectedCredentialKind)
+    {
+        var template = GetTemplate(driver);
+
+        Assert.Equal(expectedConnectionKind, template.ConnectionKind);
+        Assert.Equal(expectedCredentialKind, template.CredentialKind);
+        Assert.Equal(expectedCredentialKind, template.Capabilities.CredentialKind);
+        Assert.True(template.Capabilities.SupportsStreaming);
+        Assert.True(template.Capabilities.SupportsSystemPrompt);
+        Assert.False(template.Capabilities.RequiresWorkspace);
+        Assert.False(ProviderTemplateRules.RequiresApiKey(template.Driver, template.ConnectionKind));
+
+        var receipt = BuildCatalogReadinessReceipt();
+        Assert.Contains(receipt.Templates, item =>
+            item.Driver == driver
+            && item.RuntimeModuleFamily == expectedRuntimeFamily
+            && item.RuntimeModuleStatus == "registered");
+    }
+
     [Fact]
     public void CatalogReadinessReceiptMapsTemplatesToRuntimeModulesAndAdvisoryPolicies()
     {
-        var store = new CoreStore(Path.Combine(Path.GetTempPath(), $"tinadec-model-catalog-readiness-{Guid.NewGuid():N}.db"));
-        store.Initialize();
-        var service = new ModelCatalogReadinessService(store, CreateRegisteredModuleCatalog());
-
-        var receipt = service.Check();
+        var receipt = BuildCatalogReadinessReceipt();
 
         Assert.Equal("ready", receipt.Status);
         Assert.Equal(ModelProviderCatalog.ListTemplates().Count, receipt.TemplateCount);
@@ -106,6 +129,11 @@ public sealed class ModelProviderCatalogTests
             && template.RuntimeModuleStatus == "registered"
             && template.LiveDiscoveryPolicy == "loopback_only_advisory");
         Assert.Contains(receipt.Templates, template =>
+            template.Driver == "pollinations"
+            && template.RuntimeModuleFamily == "openai-compatible"
+            && template.RuntimeModuleStatus == "registered"
+            && template.LiveDiscoveryPolicy == "public_endpoint_advisory");
+        Assert.Contains(receipt.Templates, template =>
             template.Driver == "codex-cli"
             && template.RuntimeModuleFamily == "cli"
             && template.RuntimeModuleStatus == "registered"
@@ -116,6 +144,15 @@ public sealed class ModelProviderCatalogTests
     private static ModelProviderTemplateDto GetTemplate(string driver)
     {
         return Assert.Single(ModelProviderCatalog.ListTemplates(), template => template.Driver.Equals(driver, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static ModelCatalogReadinessReceiptDto BuildCatalogReadinessReceipt()
+    {
+        var store = new CoreStore(Path.Combine(Path.GetTempPath(), $"tinadec-model-catalog-readiness-{Guid.NewGuid():N}.db"));
+        store.Initialize();
+        var service = new ModelCatalogReadinessService(store, CreateRegisteredModuleCatalog());
+
+        return service.Check();
     }
 
     private static ModelProviderModuleCatalog CreateRegisteredModuleCatalog()

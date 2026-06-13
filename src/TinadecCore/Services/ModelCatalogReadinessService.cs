@@ -49,7 +49,7 @@ public sealed class ModelCatalogReadinessService(
             templateReceipts,
             [
                 "Core owns model catalog readiness; Gateway and Desktop may display this receipt but must not recompute template or runtime-module status.",
-                "Live model discovery is advisory, credential-gated for remote providers, and loopback-only for local-server templates.",
+                "Live model discovery is advisory, credential-gated for remote providers, public-endpoint-gated for no-login providers, and loopback-only for local-server templates.",
                 "Static provider templates remain visible even when live discovery is unavailable or disabled."
             ]);
     }
@@ -152,6 +152,11 @@ public sealed class ModelCatalogReadinessService(
             || IsLoopback(template.DefaultBaseUrl))
         {
             return "loopback_only_advisory";
+        }
+
+        if (template.ConnectionKind.Equals("public-api", StringComparison.OrdinalIgnoreCase))
+        {
+            return "public_endpoint_advisory";
         }
 
         if (IsApiKeyCredential(template.CredentialKind) || IsApiKeyCredential(template.Capabilities.CredentialKind))

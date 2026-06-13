@@ -16,6 +16,8 @@ public sealed class LocalHttpProviderRuntimeTests
         var generic = GetTemplate("local-http");
         var openAiCompatible = GetTemplate("local-http-openai-compatible");
         var ollama = GetTemplate("local-http-ollama");
+        var lmStudio = GetTemplate("lmstudio");
+        var llamaCpp = GetTemplate("llamacpp");
 
         Assert.Equal("local-http", generic.ProviderFamily);
         Assert.Equal("http", generic.ConnectionKind);
@@ -30,6 +32,14 @@ public sealed class LocalHttpProviderRuntimeTests
         Assert.Equal("local-http", ollama.ProviderFamily);
         Assert.Equal("local-http-ollama", ollama.Driver);
         Assert.False(ollama.Capabilities.SupportsTools);
+
+        Assert.Equal("lmstudio", lmStudio.ProviderFamily);
+        Assert.Equal("local-server", lmStudio.ConnectionKind);
+        Assert.Equal("none", lmStudio.CredentialKind);
+
+        Assert.Equal("llamacpp", llamaCpp.ProviderFamily);
+        Assert.Equal("local-server", llamaCpp.ConnectionKind);
+        Assert.Equal("none", llamaCpp.CredentialKind);
     }
 
     [Fact]
@@ -45,6 +55,8 @@ public sealed class LocalHttpProviderRuntimeTests
 
         Assert.True(runtime.CanHandle(CreateContext("local-http", "http://localhost:8080/invoke")));
         Assert.True(runtime.CanHandle(CreateContext("ollama", "http://localhost:11434/v1", "local-server")));
+        Assert.True(runtime.CanHandle(CreateContext("lmstudio", "http://localhost:1234/v1", "local-server")));
+        Assert.True(runtime.CanHandle(CreateContext("llamacpp", "http://localhost:8080/v1", "local-server")));
         var capabilities = catalog.GetCapabilities("local-http");
         Assert.NotNull(capabilities);
         Assert.True(capabilities.SupportsStreaming);
@@ -117,8 +129,11 @@ public sealed class LocalHttpProviderRuntimeTests
         Assert.Equal("/v1/chat/completions", capturedRequest?.RequestUri?.AbsolutePath);
     }
 
-    [Fact]
-    public async Task LocalServerOpenAiCompatibleDriversUseChatCompletionsMapping()
+    [Theory]
+    [InlineData("ollama", "http://localhost:11434/v1")]
+    [InlineData("lmstudio", "http://localhost:1234/v1")]
+    [InlineData("llamacpp", "http://localhost:8080/v1")]
+    public async Task LocalServerOpenAiCompatibleDriversUseChatCompletionsMapping(string driver, string baseUrl)
     {
         HttpRequestMessage? capturedRequest = null;
         var handler = new StubHttpMessageHandler(request =>
@@ -132,7 +147,7 @@ public sealed class LocalHttpProviderRuntimeTests
         var runtime = CreateRuntime(handler);
 
         var result = await runtime.GenerateAsync(
-            CreateContext("ollama", "http://localhost:11434/v1", "local-server"),
+            CreateContext(driver, baseUrl, "local-server"),
             null,
             CreateMessages(),
             CancellationToken.None);

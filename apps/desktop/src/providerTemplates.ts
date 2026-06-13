@@ -1,4 +1,4 @@
-export type ConnectionKind = 'api-key' | 'cli' | 'local-server'
+export type ConnectionKind = 'api-key' | 'cli' | 'local-server' | 'public-api'
 
 export type ProviderCategory = 'cloud-api' | 'local-server' | 'agent-cli' | 'custom'
 
@@ -116,6 +116,21 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     icon: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.778 1.844v1.919q-.569-.026-1.138-.032-.708-.008-1.415.037c-1.93.126-4.023.728-6.149 2.237-2.911 2.066-2.731 1.95-4.14 2.75-.396.223-1.342.574-2.185.798-.841.225-1.753.333-1.751.333v4.229s.768.108 1.61.333c.842.224 1.789.575 2.185.799 1.41.798 1.228.683 4.14 2.75 2.126 1.509 4.22 2.11 6.148 2.236.88.058 1.716.041 2.555.005v1.918l7.222-4.168-7.222-4.17v2.176c-.86.038-1.611.065-2.278.021-1.364-.09-2.417-.357-3.979-1.465-2.244-1.593-2.866-2.027-3.68-2.508.889-.518 1.449-.906 3.822-2.59 1.56-1.109 2.614-1.377 3.978-1.466.667-.044 1.418-.017 2.278.02v2.176L24 6.014Z"/></svg>`,
     fields: { base_url: true, model: true, api_key: true, binary_path: false, home_path: false, server_url: false, launch_args: false },
     placeholders: { base_url: 'https://openrouter.ai/api/v1', model: 'openai/gpt-5 / anthropic/claude-sonnet-4', api_key: 'sk-or-...' }
+  },
+  {
+    driver: 'pollinations',
+    display_name_key: 'providers.pollinations',
+    summary_key: 'providers.pollinationsSummary',
+    connection_kind: 'public-api',
+    category: 'cloud-api',
+    default_base_url: 'https://gen.pollinations.ai/v1',
+    default_model: 'openai',
+    capabilities: ['chat', 'streaming', 'public-api', 'no-api-key'],
+    brand_color: '#e11d48',
+    brand_bg: hexToRgba('#e11d48', 0.12),
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25c.38 0 .72.22.88.56l1.83 3.92 4.29.55c.37.05.68.3.8.66.12.35.02.74-.25 1l-3.13 2.99.8 4.25c.07.37-.08.74-.39.96a.96.96 0 0 1-1.03.05L12 15.13l-3.8 2.05a.96.96 0 0 1-1.03-.05.97.97 0 0 1-.39-.96l.8-4.25-3.13-2.99a.96.96 0 0 1-.25-1c.12-.36.43-.61.8-.66l4.29-.55 1.83-3.92c.16-.34.5-.56.88-.56Zm0 3.28-1.23 2.63a.96.96 0 0 1-.75.55l-2.88.37 2.1 2c.24.23.35.56.29.88L9 14.82l2.54-1.37c.29-.16.63-.16.92 0L15 14.82l-.53-2.86c-.06-.32.05-.65.29-.88l2.1-2-2.88-.37a.96.96 0 0 1-.75-.55L12 5.53Z"/></svg>`,
+    fields: { base_url: true, model: true, api_key: false, binary_path: false, home_path: false, server_url: false, launch_args: false },
+    placeholders: { base_url: 'https://gen.pollinations.ai/v1', model: 'openai / openai-large / mistral' }
   },
   {
     driver: 'groq',
@@ -326,6 +341,21 @@ export const PROVIDER_TEMPLATES: ProviderTemplate[] = [
     icon: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 2v2h1v14c0 1.1.9 2 2 2h4c1.1 0 2-.9 2-2V4h1V2H7zm4 14c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm2-4H9V4h4v8z"/></svg>`,
     fields: { base_url: true, model: true, api_key: false, binary_path: false, home_path: false, server_url: false, launch_args: false },
     placeholders: { base_url: 'http://localhost:1234/v1', model: 'default' }
+  },
+  {
+    driver: 'llamacpp',
+    display_name_key: 'providers.llamaCpp',
+    summary_key: 'providers.llamaCppSummary',
+    connection_kind: 'local-server',
+    category: 'local-server',
+    default_base_url: 'http://localhost:8080/v1',
+    default_model: 'default',
+    capabilities: ['chat', 'local', 'no-api-key'],
+    brand_color: '#16a34a',
+    brand_bg: hexToRgba('#16a34a', 0.12),
+    icon: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 6.5C5 4.57 6.57 3 8.5 3h7A3.5 3.5 0 0 1 19 6.5V8h1.25c.41 0 .75.34.75.75v6.5c0 .41-.34.75-.75.75H19v1.5a3.5 3.5 0 0 1-3.5 3.5h-7A3.5 3.5 0 0 1 5 17.5V16H3.75a.75.75 0 0 1-.75-.75v-6.5c0-.41.34-.75.75-.75H5V6.5Zm2 0V8h10V6.5C17 5.67 16.33 5 15.5 5h-7C7.67 5 7 5.67 7 6.5ZM7 16v1.5c0 .83.67 1.5 1.5 1.5h7c.83 0 1.5-.67 1.5-1.5V16H7Zm-2-2h14v-4H5v4Zm4.25-3.25h1.5v2.5h-1.5v-2.5Zm4 0h1.5v2.5h-1.5v-2.5Z"/></svg>`,
+    fields: { base_url: true, model: true, api_key: false, binary_path: false, home_path: false, server_url: false, launch_args: false },
+    placeholders: { base_url: 'http://localhost:8080/v1', model: 'default' }
   },
   {
     driver: 'codex-cli',
