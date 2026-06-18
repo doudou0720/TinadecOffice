@@ -1,3 +1,4 @@
+using TinadecModel.Services;
 using TinadecCore.Services;
 
 namespace TinadecCore.Tests;

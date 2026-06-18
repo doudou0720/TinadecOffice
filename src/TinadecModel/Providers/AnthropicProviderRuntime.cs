@@ -262,6 +262,20 @@ public sealed class AnthropicProviderRuntime(AnthropicClient client) : IModelPro
                 failure.ProviderId);
         }
     }
+
+    /// <summary>
+    /// Anthropic 原生流式尚未实现，抛出 NotSupportedException 触发上层回退到 GenerateAsync。
+    /// 后续可对接 Anthropic Messages API 的 stream=true SSE。
+    /// </summary>
+    public IAsyncEnumerable<ModelStreamChunkDto> StreamAsync(
+        ResolvedModelInvocationContextDto context,
+        string? apiKey,
+        IReadOnlyList<MessageDto> messages,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<ModelToolSpecDto>? tools = null)
+    {
+        throw new NotSupportedException("Anthropic streaming is not yet implemented. Falling back to non-streaming generation.");
+    }
 }
 
 public sealed class AnthropicModule : IModelProviderModule

@@ -3,6 +3,7 @@ using TinadecCore.Storage;
 using Tinadec.Contracts.Models;
 using TinadecCore.Abstractions;
 using TinadecCore.Tracing;
+using TinadecModel.Abstractions;
 
 namespace TinadecCore.Services;
 
@@ -339,6 +340,372 @@ public sealed class OrchestratorService
         }, ["agent.message", "agent.loop.limit"]);
 
         return new SessionModelOrchestrationResult(fallbackMessage, lastInvocation);
+    }
+
+    /// <summary>
+    /// 流式编排：与 CompleteRunWithModelAsync 等价，但通过 IAsyncEnumerable&lt;ModelStreamChunkDto&gt;
+    /// 增量推送模型输出。让前端能够实时看到 token 流、工具调用、错误与 fallback 事件。
+    /// </summary>
+    public async IAsyncEnumerable<ModelStreamChunkDto> CompleteRunWithModelStreamAsync(
+        OrchestrationSnapshotDto snapshot,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (snapshot.Run is null)
+        {
+            yield break;
+        }
+
+        using var activity = TinadecActivitySource.Instance.StartActivity(SpanNames.AgentInference);
+        activity?
+            .SetTag(SpanAttrs.RunId, snapshot.Run.Id)
+            .SetTag(SpanAttrs.SessionId, snapshot.Run.SessionId)
+            .SetTag(SpanAttrs.RoutePurpose, "planner")
+            .SetTag("stream", true);
+
+        var promptContext = await _promptContextService.BuildForRunAsync(
+            snapshot,
+            "agent_meeting",
+            cancellationToken: cancellationToken);
+
+        var toolSpecs = _tools.BuildOpenAiToolSpecs("programming");
+        var hasTools = toolSpecs.Count > 0;
+        var conversation = new List<MessageDto>(_store.ListMessages(snapshot.Run.SessionId));
+
+        ModelInvocationResultDto? lastInvocation = null;
+
+        for (var turn = 0; turn < MaxAgentTurns; turn++)
+        {
+            var contentBuilder = new System.Text.StringBuilder();
+            var collectedToolCalls = new List<ToolCallDto>();
+            string? effectiveProviderId = null;
+            string? effectiveModel = null;
+            bool fallbackSelected = false;
+            string? errorProviderId = null;
+            ProviderErrorCategory? errorCategory = null;
+            string? safeError = null;
+            ModelUsageDto? usage = null;
+            ModelFinishReason? finishReason = null;
+            bool streamFailed = false;
+
+            await foreach (var chunk in _modelRuntime.InvokeStreamAsync(
+                snapshot.Run.SessionId,
+                "planner",
+                conversation,
+                cancellationToken,
+                promptContext.SystemPrompt,
+                hasTools ? toolSpecs : null))
+            {
+                effectiveProviderId = chunk.ProviderInstanceId;
+                if (chunk.EffectiveModel is not null) effectiveModel = chunk.EffectiveModel;
+                fallbackSelected = fallbackSelected || chunk.FallbackProviderSelected;
+                if (chunk.ErrorProviderId is not null) errorProviderId = chunk.ErrorProviderId;
+                if (chunk.ErrorCategory is not null) errorCategory = chunk.ErrorCategory;
+                if (chunk.SafeErrorMessage is not null) safeError = chunk.SafeErrorMessage;
+                if (chunk.Usage is not null) usage = chunk.Usage;
+                if (chunk.FinishReason is not null) finishReason = chunk.FinishReason;
+
+                if (chunk.Kind == ModelStreamChunkKind.Error)
+                {
+                    streamFailed = true;
+                    yield return chunk;
+                    break;
+                }
+
+                if (chunk.Kind == ModelStreamChunkKind.Delta && !string.IsNullOrEmpty(chunk.Delta))
+                {
+                    contentBuilder.Append(chunk.Delta);
+                }
+
+                // 收集 tool call：可能出现在 ToolCallDelta / Delta / Done chunk 中
+                if (chunk.ToolCallDelta is not null)
+                {
+                    collectedToolCalls.Add(chunk.ToolCallDelta);
+                }
+
+                // 透传 context / delta / tool call delta / usage chunk 给前端
+                if (chunk.Kind is ModelStreamChunkKind.Context
+                    or ModelStreamChunkKind.Delta
+                    or ModelStreamChunkKind.ToolCallDelta
+                    or ModelStreamChunkKind.Usage)
+                {
+                    yield return chunk;
+                }
+            }
+
+            if (streamFailed)
+            {
+                activity?
+                    .SetTag(SpanAttrs.Status, "error")
+                    .SetTag(SpanAttrs.ErrorCategory, errorCategory?.ToString());
+                yield break;
+            }
+
+            // 合并同 callId 的 tool call deltas（流式可能分片到达）
+            var mergedToolCalls = MergeToolCallDeltas(collectedToolCalls);
+
+            lastInvocation = new ModelInvocationResultDto(
+                Status: "executed",
+                Content: contentBuilder.ToString(),
+                Context: new ResolvedModelInvocationContextDto(
+                    Purpose: "planner",
+                    Route: null,
+                    Provider: null,
+                    EffectiveBaseUrl: "",
+                    EffectiveModel: effectiveModel ?? "",
+                    EncryptedApiKey: null,
+                    Driver: null,
+                    ConnectionKind: "",
+                    ProviderInstanceId: effectiveProviderId ?? "",
+                    IsFallbackProvider: fallbackSelected),
+                UsedStubResponse: false,
+                RuntimeId: null,
+                ErrorCategory: errorCategory,
+                IsRetryable: false,
+                ProviderStatusCode: null,
+                ProviderExitCode: null,
+                SafeErrorMessage: safeError,
+                ErrorProviderId: errorProviderId,
+                ToolCalls: mergedToolCalls,
+                Usage: usage,
+                FinishReason: finishReason);
+
+            activity?
+                .SetTag(SpanAttrs.ProviderId, effectiveProviderId)
+                .SetTag(SpanAttrs.ProviderInstanceId, effectiveProviderId)
+                .SetTag(SpanAttrs.Model, effectiveModel)
+                .SetTag(SpanAttrs.Status, lastInvocation.Status)
+                .SetTag(SpanAttrs.FallbackProviderId, fallbackSelected ? errorProviderId : null);
+
+            PublishModelEvent("model.requested", snapshot.Run.SessionId, snapshot.Run.Id, lastInvocation, promptContext, ["agent.meeting", "model.remote"]);
+            PublishModelEvent("model.completed", snapshot.Run.SessionId, snapshot.Run.Id, lastInvocation, promptContext, ["agent.meeting", "model.remote"]);
+
+            // 无工具调用 → 最终回复，持久化并推送 done chunk
+            if (mergedToolCalls.Count == 0)
+            {
+                var reply = contentBuilder.ToString();
+                if (snapshot.Graph is not null && turn == 0)
+                {
+                    reply = $"{reply}\n\nTask graph ready: {snapshot.Graph.Title} with {snapshot.Nodes.Count} nodes and {snapshot.Assignments.Count} execution assignments. Mutating actions remain approval-gated.";
+                }
+
+                var assistantMessage = _store.AddMessage(snapshot.Run.SessionId, "assistant", reply);
+                Publish("message.created", snapshot.Run.SessionId, new JsonObject
+                {
+                    ["message_id"] = assistantMessage.Id,
+                    ["role"] = assistantMessage.Role,
+                    ["run_id"] = snapshot.Run.Id,
+                    ["route_purpose"] = "planner",
+                    ["provider_instance_id"] = effectiveProviderId,
+                    ["model"] = effectiveModel,
+                    ["agent_turn"] = turn,
+                    ["fallback_provider_selected"] = fallbackSelected,
+                    ["streamed"] = true
+                }, ["agent.message", "agent.meeting", "model.remote"]);
+
+                yield return new ModelStreamChunkDto(
+                    RunId: snapshot.Run.Id,
+                    SessionId: snapshot.Run.SessionId,
+                    Purpose: "planner",
+                    ProviderInstanceId: effectiveProviderId ?? "",
+                    EffectiveModel: effectiveModel,
+                    Kind: ModelStreamChunkKind.Done,
+                    Delta: null,
+                    ToolCallDelta: null,
+                    Usage: usage,
+                    FinishReason: finishReason,
+                    ErrorCategory: null,
+                    SafeErrorMessage: null,
+                    FallbackProviderSelected: fallbackSelected,
+                    ErrorProviderId: errorProviderId);
+                yield break;
+            }
+
+            // 有工具调用 → 执行工具，继续循环
+            Publish("model.tool_calls", snapshot.Run.SessionId, new JsonObject
+            {
+                ["run_id"] = snapshot.Run.Id,
+                ["turn"] = turn,
+                ["tool_call_count"] = mergedToolCalls.Count,
+                ["tool_ids"] = new JsonArray(mergedToolCalls.Select(tc => JsonValue.Create(tc.ToolId)).ToArray())
+            }, ["agent.tool_calls", "model.remote"]);
+
+            var toolCallSummary = string.Join("\n", mergedToolCalls.Select(tc => $"[Calling {tc.ToolId}]"));
+            conversation.Add(new MessageDto(
+                $"asst_tc_{Guid.NewGuid():N}",
+                snapshot.Run.SessionId,
+                "assistant",
+                string.IsNullOrWhiteSpace(contentBuilder.ToString()) ? toolCallSummary : $"{contentBuilder}\n{toolCallSummary}",
+                DateTimeOffset.UtcNow));
+
+            var pendingApprovals = new List<ToolCallDto>();
+            foreach (var toolCall in mergedToolCalls)
+            {
+                var tool = _tools.Resolve(toolCall.ToolId);
+                if (tool is null)
+                {
+                    conversation.Add(new MessageDto(
+                        $"tool_{Guid.NewGuid():N}",
+                        snapshot.Run.SessionId,
+                        "tool",
+                        $"Error: Tool '{toolCall.ToolId}' is not registered in the tool registry.",
+                        DateTimeOffset.UtcNow,
+                        toolCall.CallId));
+                    continue;
+                }
+
+                if (tool.RequiresApproval || _capabilityPolicy.Evaluate("approval", tool).Required)
+                {
+                    var approval = _store.CreateApproval(new CreateApprovalRequest(
+                        snapshot.Run.SessionId,
+                        tool.Id,
+                        tool.DisplayName,
+                        SummarizeToolCall(toolCall),
+                        null));
+                    Publish("tool.execution.approval_required", snapshot.Run.SessionId, new JsonObject
+                    {
+                        ["run_id"] = snapshot.Run.Id,
+                        ["tool_id"] = tool.Id,
+                        ["tool_call_id"] = toolCall.CallId,
+                        ["approval_id"] = approval.Id,
+                        ["agent_turn"] = turn
+                    }, ["tool.execution", "approval.ask"]);
+
+                    pendingApprovals.Add(toolCall);
+                    conversation.Add(new MessageDto(
+                        $"tool_{Guid.NewGuid():N}",
+                        snapshot.Run.SessionId,
+                        "tool",
+                        $"Tool '{tool.Id}' requires user approval before execution. Approval ID: {approval.Id}. Please wait for user decision.",
+                        DateTimeOffset.UtcNow,
+                        toolCall.CallId));
+                    continue;
+                }
+
+                var result = await ExecuteToolCallAsync(snapshot.Run, tool, toolCall, cancellationToken);
+                _store.AddStepResult(
+                    snapshot.Run.Id,
+                    $"agent_turn_{turn}_{tool.Id}",
+                    "agent_planner",
+                    result.Status,
+                    result.Summary,
+                    result.Evidence);
+
+                Publish("tool.execution.completed", snapshot.Run.SessionId, new JsonObject
+                {
+                    ["run_id"] = snapshot.Run.Id,
+                    ["tool_id"] = tool.Id,
+                    ["tool_call_id"] = toolCall.CallId,
+                    ["status"] = result.Status,
+                    ["agent_turn"] = turn
+                }, ["tool.execution", "step.result"]);
+
+                conversation.Add(new MessageDto(
+                    $"tool_{Guid.NewGuid():N}",
+                    snapshot.Run.SessionId,
+                    "tool",
+                    FormatToolResult(result),
+                    DateTimeOffset.UtcNow,
+                    toolCall.CallId));
+            }
+
+            if (pendingApprovals.Count > 0)
+            {
+                var approvalNote = $"I need your approval to execute {pendingApprovals.Count} tool(s): {string.Join(", ", pendingApprovals.Select(tc => tc.ToolId))}. Please review the pending approvals and decide.";
+                var approvalMessage = _store.AddMessage(snapshot.Run.SessionId, "assistant", approvalNote);
+                Publish("message.created", snapshot.Run.SessionId, new JsonObject
+                {
+                    ["message_id"] = approvalMessage.Id,
+                    ["role"] = approvalMessage.Role,
+                    ["run_id"] = snapshot.Run.Id,
+                    ["pending_approval_count"] = pendingApprovals.Count
+                }, ["agent.message", "approval.ask"]);
+
+                yield return new ModelStreamChunkDto(
+                    RunId: snapshot.Run.Id,
+                    SessionId: snapshot.Run.SessionId,
+                    Purpose: "planner",
+                    ProviderInstanceId: effectiveProviderId ?? "",
+                    EffectiveModel: effectiveModel,
+                    Kind: ModelStreamChunkKind.Done,
+                    Delta: approvalNote,
+                    ToolCallDelta: null,
+                    Usage: usage,
+                    FinishReason: ModelFinishReason.ApprovalRequired,
+                    ErrorCategory: null,
+                    SafeErrorMessage: null,
+                    FallbackProviderSelected: fallbackSelected,
+                    ErrorProviderId: errorProviderId);
+                yield break;
+            }
+        }
+
+        // Max turns reached
+        var fallbackReply = lastInvocation?.Content ?? "Agent loop reached maximum turns without a final response.";
+        var fallbackMessage = _store.AddMessage(snapshot.Run.SessionId, "assistant", fallbackReply);
+        Publish("message.created", snapshot.Run.SessionId, new JsonObject
+        {
+            ["message_id"] = fallbackMessage.Id,
+            ["role"] = fallbackMessage.Role,
+            ["run_id"] = snapshot.Run.Id,
+            ["max_turns_reached"] = true
+        }, ["agent.message", "agent.loop.limit"]);
+
+        yield return new ModelStreamChunkDto(
+            RunId: snapshot.Run.Id,
+            SessionId: snapshot.Run.SessionId,
+            Purpose: "planner",
+            ProviderInstanceId: "",
+            EffectiveModel: null,
+            Kind: ModelStreamChunkKind.Done,
+            Delta: fallbackReply,
+            ToolCallDelta: null,
+            Usage: null,
+            FinishReason: ModelFinishReason.MaxTurns,
+            ErrorCategory: null,
+            SafeErrorMessage: null,
+            FallbackProviderSelected: false,
+            ErrorProviderId: null);
+    }
+
+    /// <summary>
+    /// 合并流式分片到达的 tool call deltas：相同 callId 的分片会被拼接。
+    /// </summary>
+    private static List<ToolCallDto> MergeToolCallDeltas(IReadOnlyList<ToolCallDto> deltas)
+    {
+        var merged = new Dictionary<string, ToolCallDto>(StringComparer.Ordinal);
+        var orderedIds = new List<string>();
+        foreach (var delta in deltas)
+        {
+            var callId = delta.CallId;
+            if (string.IsNullOrEmpty(callId))
+            {
+                callId = $"call_{Guid.NewGuid():N}";
+            }
+
+            if (!merged.ContainsKey(callId))
+            {
+                merged[callId] = delta;
+                orderedIds.Add(callId);
+            }
+            else
+            {
+                var existing = merged[callId];
+                var combinedArgs = new Dictionary<string, object?>(existing.Arguments, StringComparer.Ordinal);
+                foreach (var kvp in delta.Arguments)
+                {
+                    if (combinedArgs.TryGetValue(kvp.Key, out var current) && current is string currentStr && kvp.Value is string deltaStr)
+                    {
+                        combinedArgs[kvp.Key] = currentStr + deltaStr;
+                    }
+                    else
+                    {
+                        combinedArgs[kvp.Key] = kvp.Value;
+                    }
+                }
+                merged[callId] = existing with { Arguments = combinedArgs };
+            }
+        }
+        return orderedIds.Select(id => merged[id]).ToList();
     }
 
     private async Task<CodeToolExecuteResultDto> ExecuteToolCallAsync(

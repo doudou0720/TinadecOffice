@@ -159,8 +159,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
           :title="isChatMode ? t('chat.terminal') : t('chat.chatMode')"
           @click="toggleChatMode"
         >
-          <MessageCircle v-if="isChatMode" :size="18" />
-          <SquareTerminal v-else :size="18" />
+          <MessageCircle v-if="isChatMode" :size="15" />
+          <SquareTerminal v-else :size="15" />
         </UiButton>
       </div>
 
@@ -170,15 +170,15 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             <UiDropdownMenu v-model:open="showPlusMenu" class="plus-dropdown-menu">
               <template #trigger>
                 <UiButton variant="ghost" size="icon" class="welcome-dialog-plus">
-                  <Plus :size="18" />
+                  <Plus :size="15" />
                 </UiButton>
               </template>
               <button class="plus-menu-item" @click="emit('add-image'); showPlusMenu = false">
-                <Image :size="14" />
+                <Image :size="12" />
                 <span>{{ t('chat.addImage') }}</span>
               </button>
               <button class="plus-menu-item" @click="emit('add-file'); showPlusMenu = false">
-                <FileText :size="14" />
+                <FileText :size="12" />
                 <span>{{ t('chat.addFile') }}</span>
               </button>
             </UiDropdownMenu>
@@ -201,7 +201,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
             :disabled="!draft.trim()"
             @click="handleSend"
           >
-            <ArrowUp :size="18" />
+            <ArrowUp :size="15" />
           </UiButton>
         </div>
 
@@ -220,16 +220,16 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
               class="project-dropdown-trigger"
               @click="toggleProjectDropdown"
             >
-              <FolderOpen :size="14" />
+              <FolderOpen :size="12" />
               <span class="project-dropdown-label">
                 {{ selectedProject ? selectedProject.name : t('chat.selectProject') }}
               </span>
-              <ChevronDown :size="12" class="project-dropdown-chevron" />
+              <ChevronDown :size="11" class="project-dropdown-chevron" />
             </button>
           </div>
           <div class="toolbar-right">
             <button class="toolbar-agent-config" @click="router.push('/settings')">
-              <Settings :size="12" />
+              <Settings :size="11" />
               <span>{{ t('chat.agentConfig') }}</span>
             </button>
           </div>
@@ -253,14 +253,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
               :class="{ active: project.id === selectedProjectId }"
               @click="selectProject(project.id)"
             >
-              <FolderOpen :size="14" />
+              <FolderOpen :size="12" />
               <span>{{ project.name }}</span>
             </button>
           </div>
         </UiScrollArea>
         <div class="project-dropdown-divider" />
         <button class="project-dropdown-item project-dropdown-new" @click="openNewProject">
-          <FolderPlus :size="14" />
+          <FolderPlus :size="12" />
           <span>{{ t('chat.openNewProject') }}</span>
         </button>
       </div>

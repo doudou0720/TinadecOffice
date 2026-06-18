@@ -2,6 +2,7 @@ using System.Text;
 using Tinadec.Contracts.Models;
 using TinadecCore.Abstractions;
 using TinadecCore.Storage;
+using TinadecModel.Abstractions;
 
 namespace TinadecCore.Services;
 

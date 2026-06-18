@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Tinadec.Contracts.Models;
+using TinadecModel.Services;
 using TinadecCore.Services;
 using TinadecCore.Storage;
 using TinadecModel.Providers;

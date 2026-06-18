@@ -1,5 +1,6 @@
 using System.Reflection;
 using Tinadec.Contracts.Models;
+using TinadecModel.Services;
 using TinadecCore.Services;
 using TinadecCore.Storage;
 

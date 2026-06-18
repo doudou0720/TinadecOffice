@@ -39,7 +39,7 @@ const emit = defineEmits<{
           @reject="emit('reject', $event)"
         />
         <div v-if="messages.length === 0" class="empty-state">
-          <Bot :size="24" />
+          <Bot :size="20" />
           <span>{{ t('chat.ready') }}</span>
         </div>
       </div>

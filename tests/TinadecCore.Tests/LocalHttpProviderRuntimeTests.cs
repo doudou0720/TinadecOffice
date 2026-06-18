@@ -2,6 +2,8 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Tinadec.Contracts.Models;
+using TinadecModel.Abstractions;
+using TinadecModel.Services;
 using TinadecCore.Abstractions;
 using TinadecCore.Services;
 using TinadecCore.Storage;

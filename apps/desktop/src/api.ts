@@ -414,6 +414,95 @@ export interface AgentCandidateDto {
   created_at: string;
 }
 
+export interface AgentEvolutionProposalDto {
+  id: string;
+  generated_by_agent_id: string;
+  name: string;
+  layer: string;
+  agent_type: string;
+  description: string;
+  suggested_tools: string[];
+  evaluation_notes: string[];
+  observed_patterns: string[];
+  confidence_score: number;
+  status: string;
+  created_at: string;
+}
+
+export interface PromoteAgentCandidateInput {
+  agent_id: string;
+  mode: string;
+  model_route_purpose: string;
+  allowed_tools: string[];
+  capabilities: string[];
+  system_prompt?: string | null;
+}
+
+export interface PromptFragmentVersionDto {
+  id: string;
+  fragment_id: string;
+  version: number;
+  content: string;
+  changed_fields: string[];
+  change_summary: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface PromptFragmentEffectivenessDto {
+  fragment_id: string;
+  active_version: number;
+  total_invocations: number;
+  positive_signals: number;
+  negative_signals: number;
+  effectiveness_score: number;
+  last_evaluated_at: string;
+  versions: PromptFragmentVersionDto[];
+}
+
+export interface PromptFragmentSignalInput {
+  fragment_id: string;
+  signal: 'positive' | 'negative';
+  run_id?: string | null;
+  session_id?: string | null;
+  note?: string | null;
+  version?: number | null;
+}
+
+export interface PromptFragmentAbTestResultDto {
+  fragment_id: string;
+  version_a: number;
+  version_b: number;
+  version_a_details?: PromptFragmentVersionDto | null;
+  version_b_details?: PromptFragmentVersionDto | null;
+  score_a: number;
+  score_b: number;
+  score_difference: number;
+  recommendation: string;
+}
+
+export interface ModelStreamChunkDto {
+  run_id: string;
+  session_id: string;
+  purpose: string;
+  provider_instance_id: string;
+  effective_model?: string | null;
+  kind: 'context' | 'delta' | 'tool_call_delta' | 'usage' | 'done' | 'error';
+  delta?: string | null;
+  tool_call_delta?: {
+    call_id: string;
+    tool_id: string;
+    arguments: Record<string, unknown>;
+  } | null;
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null;
+  finish_reason?: string | null;
+  error_category?: string | null;
+  is_retryable?: boolean;
+  safe_error_message?: string | null;
+  fallback_provider_selected?: boolean;
+  error_provider_id?: string | null;
+}
+
 export interface PromptFragmentDto {
   id: string;
   key: string;
@@ -934,6 +1023,99 @@ export const api = {
     body: JSON.stringify({ mode })
   }),
   listAgentCandidates: () => request<AgentCandidateDto[]>('/api/v1/agent-candidates'),
+
+  // --- Agent Evolution ---
+  listEvolutionProposals: () => request<AgentEvolutionProposalDto[]>('/api/v1/agent-evolution/proposals'),
+  generateEvolutionProposals: (params: { session_id?: string; lookback_event_count?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.session_id) search.set('session_id', params.session_id);
+    if (params.lookback_event_count !== undefined) search.set('lookback_event_count', String(params.lookback_event_count));
+    const suffix = search.toString() ? `?${search.toString()}` : '';
+    return request<AgentEvolutionProposalDto[]>(`/api/v1/agent-evolution/generate${suffix}`, { method: 'POST' });
+  },
+  promoteAgentCandidate: (candidateId: string, input: PromoteAgentCandidateInput) => request<AgentProfileDto>(`/api/v1/agent-evolution/proposals/${encodeURIComponent(candidateId)}/promote`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  }),
+  rejectAgentCandidate: (candidateId: string, reason?: string) => request<{ status: string; candidate_id: string }>(`/api/v1/agent-evolution/proposals/${encodeURIComponent(candidateId)}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason })
+  }),
+
+  // --- Prompt Engineering: Versioning + A/B Testing + Effectiveness ---
+  listPromptFragmentVersions: (fragmentId: string) => request<PromptFragmentVersionDto[]>(`/api/v1/prompt-fragments/${encodeURIComponent(fragmentId)}/versions`),
+  createPromptFragmentVersion: (fragmentId: string, input: { content: string; changed_fields: string[]; change_summary: string }) => request<PromptFragmentVersionDto>(`/api/v1/prompt-fragments/${encodeURIComponent(fragmentId)}/versions`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  }),
+  rollbackPromptFragment: (fragmentId: string, targetVersion: number) => request<PromptFragmentDto>(`/api/v1/prompt-fragments/${encodeURIComponent(fragmentId)}/rollback`, {
+    method: 'POST',
+    body: JSON.stringify({ target_version: targetVersion })
+  }),
+  getPromptFragmentEffectiveness: (fragmentId: string) => request<PromptFragmentEffectivenessDto>(`/api/v1/prompt-fragments/${encodeURIComponent(fragmentId)}/effectiveness`),
+  listAllPromptFragmentEffectiveness: () => request<PromptFragmentEffectivenessDto[]>('/api/v1/prompt-fragments/effectiveness'),
+  recordPromptFragmentSignal: (fragmentId: string, input: Omit<PromptFragmentSignalInput, 'fragment_id'>) => request<PromptFragmentEffectivenessDto>(`/api/v1/prompt-fragments/${encodeURIComponent(fragmentId)}/signals`, {
+    method: 'POST',
+    body: JSON.stringify(input)
+  }),
+  comparePromptFragmentVersions: (fragmentId: string, versionA: number, versionB: number) => request<PromptFragmentAbTestResultDto>(`/api/v1/prompt-fragments/${encodeURIComponent(fragmentId)}/compare`, {
+    method: 'POST',
+    body: JSON.stringify({ version_a: versionA, version_b: versionB })
+  }),
+
+  // --- Streaming Invoke (SSE) ---
+  invokeStream: (sessionId: string, content: string, onChunk: (chunk: ModelStreamChunkDto) => void, onError?: (error: Error) => void): AbortController => {
+    const controller = new AbortController();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    (async () => {
+      try {
+        const response = await fetch(`${gatewayUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/invoke-stream`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+          body: JSON.stringify({ content }),
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(extractErrorMessage(text.length > 0 ? JSON.parse(text) : null, response.statusText));
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response body for streaming');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const json = line.slice(6).trim();
+              if (json) {
+                try {
+                  onChunk(JSON.parse(json));
+                } catch {
+                  // Skip malformed JSON
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        onError?.(err instanceof Error ? err : new Error(String(err)));
+      }
+    })();
+
+    return controller;
+  },
+
   connectEvents(sessionId: string | null, onEvent: (event: EventEnvelope) => void): EventSource {
     const params = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
     const source = new EventSource(`${gatewayUrl}/api/v1/events${params}`);

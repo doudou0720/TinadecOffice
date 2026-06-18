@@ -99,3 +99,16 @@ public sealed record CodeToolExecuteRequest(
     string? ApprovalId,
     string? Cwd,
     IReadOnlyDictionary<string, object?>? Arguments);
+
+// --- Agent Evolution & Prompt Engineering Requests ---
+
+public sealed record RejectProposalRequest(string? Reason);
+
+public sealed record CreatePromptFragmentVersionRequest(
+    string Content,
+    IReadOnlyList<string> ChangedFields,
+    string ChangeSummary);
+
+public sealed record RollbackPromptFragmentRequest(int TargetVersion);
+
+public sealed record ComparePromptVersionsRequest(int VersionA, int VersionB);

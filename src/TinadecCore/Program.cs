@@ -1,5 +1,10 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TinadecModel;
+using TinadecModel.Abstractions;
+using TinadecModel.Providers;
+using TinadecModel.Services;
+using TinadecModel.Storage;
 using TinadecCore.Services;
 using TinadecCore.Storage;
 using Tinadec.Contracts.Events;
@@ -29,7 +34,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddSingleton<CoreStore>();
 builder.Services.AddSingleton<EventHub>();
-builder.Services.AddSingleton<SecretProtector>();
+builder.Services.AddTinadecModel(CoreStore.ResolveDatabasePath(builder.Configuration));
 builder.Services.AddSingleton<ICapabilityProvider, CodexCapabilityProvider>();
 builder.Services.AddSingleton<ICapabilityProvider, CodeCapabilityProvider>();
 builder.Services.AddSingleton<ICapabilityProvider, PromptContextCapabilityProvider>();
@@ -38,22 +43,12 @@ builder.Services.AddSingleton<ICapabilityPolicy, CapabilityPolicyService>();
 builder.Services.AddSingleton<IToolRegistry, ToolRegistryService>();
 builder.Services.AddSingleton<HarnessManifestService>();
 builder.Services.AddSingleton<RuntimeReadinessService>();
-builder.Services.AddSingleton<ModelReadinessService>();
-builder.Services.AddSingleton<ModelCatalogReadinessService>();
 builder.Services.AddSingleton<ToolLayerReadinessService>();
 builder.Services.AddSingleton<ToolSearchService>();
 builder.Services.AddSingleton<ToolExecutionTimelineService>();
 builder.Services.AddSingleton<IAgentWorkflowRuntime, AgentWorkflowRuntime>();
-builder.Services.AddSingleton<IModelRouteResolver, ModelRouteResolver>();
-builder.Services.AddSingleton<IModelCredentialResolver, ModelCredentialResolver>();
-builder.Services.AddSingleton<IModelInvocationRuntime, ModelInvocationRuntime>();
 builder.Services.AddSingleton<IPromptContextPlannerRuntime, ModelPromptContextPlannerRuntime>();
 builder.Services.AddSingleton<PromptContextService>();
-builder.Services.AddSingleton<IModelManagementService, ModelManagementService>();
-builder.Services.AddModelProviderModule<LocalHttpModule>();
-builder.Services.AddModelProviderModule<AnthropicModule>();
-builder.Services.AddModelProviderModule<OpenAiCompatibleModule>();
-builder.Services.AddModelProviderModule<CliModule>();
 builder.Services.AddHttpClient<ICodeToolClient, CodeToolClient>(client =>
 {
     var gatewayUrl = Environment.GetEnvironmentVariable("TINADEC_GATEWAY_URL") ?? "http://127.0.0.1:48730";
@@ -64,6 +59,8 @@ builder.Services.AddSingleton<IToolInvocationAdapter, CoreToolInvocationAdapter>
 builder.Services.AddSingleton<DoctorService>();
 builder.Services.AddSingleton<OrchestratorService>();
 builder.Services.AddSingleton<ToolExecutionService>();
+builder.Services.AddSingleton<AgentEvolutionService>();
+builder.Services.AddSingleton<PromptFragmentVersioningService>();
 
 // --- Agent Debug Studio: Tracing & Debug Services ---
 builder.Services.AddSingleton<AgentTracing>();
@@ -177,6 +174,49 @@ app.MapPost("/api/v1/sessions/{sessionId}/messages", async (
     return modelCompletion.AssistantMessage is null
         ? Results.Json(new TinadecError("MODEL_INVOCATION_FAILED", "Model invocation failed."), statusCode: StatusCodes.Status502BadGateway)
         : Results.Ok(modelCompletion.AssistantMessage);
+});
+
+// --- 流式调用 SSE 端点：增量推送模型输出 ---
+app.MapPost("/api/v1/sessions/{sessionId}/invoke-stream", async (
+    string sessionId,
+    PostMessageRequest request,
+    CoreStore coreStore,
+    EventHub events,
+    OrchestratorService orchestrator,
+    HttpContext httpContext,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Content))
+    {
+        return Results.BadRequest(new TinadecError("MESSAGE_EMPTY", "Message content is required."));
+    }
+
+    var userMessage = coreStore.AddMessage(sessionId, "user", request.Content.Trim());
+    Publish(events, coreStore.AppendNewEvent("message.created", sessionId, new JsonObject
+    {
+        ["message_id"] = userMessage.Id,
+        ["role"] = userMessage.Role
+    }, ["agent.message"]));
+
+    var orchestration = orchestrator.CreateRunForMessage(sessionId, userMessage.Id, userMessage.Content);
+    await orchestrator.DispatchReadOnlyToolsAsync(orchestration, userMessage.Content, cancellationToken);
+
+    httpContext.Response.ContentType = "text/event-stream";
+    httpContext.Response.Headers.CacheControl = "no-cache";
+    httpContext.Response.Headers.Connection = "keep-alive";
+    httpContext.Response.Headers.Append("X-Accel-Buffering", "no");
+
+    var writer = httpContext.Response.BodyWriter;
+    await foreach (var chunk in orchestrator.CompleteRunWithModelStreamAsync(orchestration, cancellationToken))
+    {
+        var json = JsonSerializer.Serialize(chunk, TinadecJson.Options);
+        var sseLine = $"data: {json}\n\n";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sseLine);
+        await writer.WriteAsync(bytes, cancellationToken);
+        await writer.FlushAsync(cancellationToken);
+    }
+
+    return Results.Empty;
 });
 
 app.MapGet("/api/v1/sessions/{sessionId}/orchestration", (string sessionId, CoreStore coreStore) =>
@@ -749,6 +789,90 @@ app.MapPut("/api/v1/agents/{agentId}/mode", (string agentId, UpdateAgentModeRequ
 });
 
 app.MapGet("/api/v1/agent-candidates", (CoreStore coreStore) => Results.Ok(coreStore.ListAgentCandidates()));
+
+// --- 启发式 Agent 进化 API ---
+app.MapGet("/api/v1/agent-evolution/proposals", (AgentEvolutionService evolution) =>
+    Results.Ok(evolution.ListProposals()));
+
+app.MapPost("/api/v1/agent-evolution/generate", async (
+    string? sessionId,
+    int? lookbackEventCount,
+    AgentEvolutionService evolution,
+    CancellationToken cancellationToken) =>
+{
+    var proposals = await evolution.GenerateProposalsAsync(sessionId, lookbackEventCount ?? 200, cancellationToken);
+    return Results.Ok(proposals);
+});
+
+app.MapPost("/api/v1/agent-evolution/proposals/{candidateId}/promote", (
+    string candidateId,
+    PromoteAgentCandidateRequest request,
+    AgentEvolutionService evolution) =>
+{
+    var profile = evolution.PromoteCandidate(candidateId, request);
+    return profile is null
+        ? Results.NotFound(new TinadecError("CANDIDATE_NOT_FOUND", "Agent candidate was not found."))
+        : Results.Ok(profile);
+});
+
+app.MapPost("/api/v1/agent-evolution/proposals/{candidateId}/reject", (
+    string candidateId,
+    RejectProposalRequest? request,
+    AgentEvolutionService evolution) =>
+{
+    var rejected = evolution.RejectProposal(candidateId, request?.Reason);
+    return rejected ? Results.Ok(new { status = "rejected", candidate_id = candidateId })
+        : Results.NotFound(new TinadecError("CANDIDATE_NOT_FOUND", "Agent candidate was not found."));
+});
+
+// --- 提示词工程 API：版本化 + A/B 测试 + 效果追踪 ---
+app.MapGet("/api/v1/prompt-fragments/{fragmentId}/versions", (string fragmentId, PromptFragmentVersioningService versioning) =>
+    Results.Ok(versioning.ListVersions(fragmentId)));
+
+app.MapPost("/api/v1/prompt-fragments/{fragmentId}/versions", (
+    string fragmentId,
+    CreatePromptFragmentVersionRequest request,
+    PromptFragmentVersioningService versioning) =>
+{
+    var version = versioning.CreateVersion(fragmentId, request.Content, request.ChangedFields, request.ChangeSummary);
+    return Results.Ok(version);
+});
+
+app.MapPost("/api/v1/prompt-fragments/{fragmentId}/rollback", (
+    string fragmentId,
+    RollbackPromptFragmentRequest request,
+    PromptFragmentVersioningService versioning) =>
+{
+    var fragment = versioning.RollbackToVersion(fragmentId, request.TargetVersion);
+    return fragment is null
+        ? Results.NotFound(new TinadecError("FRAGMENT_OR_VERSION_NOT_FOUND", "Fragment or target version was not found."))
+        : Results.Ok(fragment);
+});
+
+app.MapGet("/api/v1/prompt-fragments/{fragmentId}/effectiveness", (string fragmentId, PromptFragmentVersioningService versioning) =>
+    Results.Ok(versioning.GetEffectiveness(fragmentId)));
+
+app.MapGet("/api/v1/prompt-fragments/effectiveness", (PromptFragmentVersioningService versioning) =>
+    Results.Ok(versioning.ListEffectiveness()));
+
+app.MapPost("/api/v1/prompt-fragments/{fragmentId}/signals", (
+    string fragmentId,
+    PromptFragmentEffectivenessInput input,
+    PromptFragmentVersioningService versioning) =>
+{
+    var actualInput = input with { FragmentId = fragmentId };
+    var effectiveness = versioning.RecordSignal(actualInput);
+    return Results.Ok(effectiveness);
+});
+
+app.MapPost("/api/v1/prompt-fragments/{fragmentId}/compare", (
+    string fragmentId,
+    ComparePromptVersionsRequest request,
+    PromptFragmentVersioningService versioning) =>
+{
+    var result = versioning.CompareVersions(fragmentId, request.VersionA, request.VersionB);
+    return Results.Ok(result);
+});
 
 // --- Agent Debug Studio API Endpoints ---
 app.MapDebugApi();

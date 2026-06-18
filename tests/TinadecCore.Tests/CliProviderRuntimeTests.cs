@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Tinadec.Contracts.Models;
+using TinadecModel.Providers;
 using TinadecCore.Services;
 
 namespace TinadecCore.Tests;

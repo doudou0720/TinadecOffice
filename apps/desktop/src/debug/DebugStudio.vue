@@ -13,7 +13,8 @@ import MetricsDashboard from './components/MetricsDashboard.vue'
 import DiagnosticsReport from './components/DiagnosticsReport.vue'
 import SessionSelector from './components/SessionSelector.vue'
 import LiveReplayToggle from './components/LiveReplayToggle.vue'
-import { Bug, Minus, Square, X } from '@lucide/vue'
+import PreviewGallery from './preview/PreviewGallery.vue'
+import { Bug, Minus, Square, X, LayoutDashboard } from '@lucide/vue'
 
 const { t } = useI18n()
 const ws = useDebugWebSocket()
@@ -21,7 +22,7 @@ const traceData = useTraceData()
 const simulation = useSimulation()
 const metrics = useMetrics()
 
-const activeTab = ref<'timeline' | 'graph' | 'metrics' | 'diagnostics'>('timeline')
+const activeTab = ref<'timeline' | 'graph' | 'metrics' | 'diagnostics' | 'preview'>('timeline')
 
 function minimizeWindow() {
   window.tinadec?.minimizeWindow?.()
@@ -76,6 +77,10 @@ onMounted(() => {
       <button class="debug-tab" :class="{ active: activeTab === 'diagnostics' }" @click="activeTab = 'diagnostics'">
         {{ t('debugStudio.tabDiagnostics') }}
       </button>
+      <button class="debug-tab" :class="{ active: activeTab === 'preview' }" @click="activeTab = 'preview'">
+        <LayoutDashboard :size="12" style="margin-right: 4px; vertical-align: middle;" />
+        预览
+      </button>
     </nav>
 
     <!-- Main content area -->
@@ -106,6 +111,10 @@ onMounted(() => {
 
       <div v-else-if="activeTab === 'diagnostics'" class="debug-diagnostics-layout">
         <DiagnosticsReport :report="metrics.diagnostics.value" />
+      </div>
+
+      <div v-else-if="activeTab === 'preview'" class="debug-preview-layout">
+        <PreviewGallery />
       </div>
     </main>
 
@@ -261,5 +270,10 @@ onMounted(() => {
   height: 100%;
   overflow: auto;
   padding: 20px;
+}
+
+.debug-preview-layout {
+  height: 100%;
+  overflow: hidden;
 }
 </style>

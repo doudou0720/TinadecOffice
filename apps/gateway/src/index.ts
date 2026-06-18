@@ -164,6 +164,18 @@ const app = new Elysia({ adapter: node() })
     setStatus(set, result.status);
     return result.data;
   })
+  .post('/api/v1/sessions/:sessionId/invoke-stream', async ({ params, body, set }) => {
+    const response = await proxySse(`/api/v1/sessions/${params.sessionId}/invoke-stream`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body as Record<string, unknown>)
+    });
+    set.headers['content-type'] = 'text/event-stream';
+    set.headers['cache-control'] = 'no-cache';
+    set.headers['connection'] = 'keep-alive';
+    set.headers['x-accel-buffering'] = 'no';
+    return response.body;
+  })
   .get('/api/v1/sessions/:sessionId/orchestration', async ({ params, set }) => {
     const result = await proxyJson(`/api/v1/sessions/${params.sessionId}/orchestration`);
     setStatus(set, result.status);
@@ -514,6 +526,85 @@ const app = new Elysia({ adapter: node() })
   })
   .get('/api/v1/agent-candidates', async ({ set }) => {
     const result = await proxyJson('/api/v1/agent-candidates');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  // --- Agent Evolution proxy routes ---
+  .get('/api/v1/agent-evolution/proposals', async ({ set }) => {
+    const result = await proxyJson('/api/v1/agent-evolution/proposals');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/agent-evolution/generate', async ({ query, set }) => {
+    const params = new URLSearchParams();
+    if (query.session_id) params.set('sessionId', String(query.session_id));
+    if (query.lookback_event_count) params.set('lookbackEventCount', String(query.lookback_event_count));
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const result = await proxyJson(`/api/v1/agent-evolution/generate${suffix}`, { method: 'POST' });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/agent-evolution/proposals/:candidateId/promote', async ({ params, body, set }) => {
+    const result = await proxyJson(`/api/v1/agent-evolution/proposals/${params.candidateId}/promote`, {
+      method: 'POST',
+      body: body as Record<string, unknown>
+    });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/agent-evolution/proposals/:candidateId/reject', async ({ params, body, set }) => {
+    const result = await proxyJson(`/api/v1/agent-evolution/proposals/${params.candidateId}/reject`, {
+      method: 'POST',
+      body: body as Record<string, unknown>
+    });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  // --- Prompt Engineering proxy routes ---
+  .get('/api/v1/prompt-fragments/:fragmentId/versions', async ({ params, set }) => {
+    const result = await proxyJson(`/api/v1/prompt-fragments/${params.fragmentId}/versions`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/prompt-fragments/:fragmentId/versions', async ({ params, body, set }) => {
+    const result = await proxyJson(`/api/v1/prompt-fragments/${params.fragmentId}/versions`, {
+      method: 'POST',
+      body: body as Record<string, unknown>
+    });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/prompt-fragments/:fragmentId/rollback', async ({ params, body, set }) => {
+    const result = await proxyJson(`/api/v1/prompt-fragments/${params.fragmentId}/rollback`, {
+      method: 'POST',
+      body: body as Record<string, unknown>
+    });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/prompt-fragments/:fragmentId/effectiveness', async ({ params, set }) => {
+    const result = await proxyJson(`/api/v1/prompt-fragments/${params.fragmentId}/effectiveness`);
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .get('/api/v1/prompt-fragments/effectiveness', async ({ set }) => {
+    const result = await proxyJson('/api/v1/prompt-fragments/effectiveness');
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/prompt-fragments/:fragmentId/signals', async ({ params, body, set }) => {
+    const result = await proxyJson(`/api/v1/prompt-fragments/${params.fragmentId}/signals`, {
+      method: 'POST',
+      body: body as Record<string, unknown>
+    });
+    setStatus(set, result.status);
+    return result.data;
+  })
+  .post('/api/v1/prompt-fragments/:fragmentId/compare', async ({ params, body, set }) => {
+    const result = await proxyJson(`/api/v1/prompt-fragments/${params.fragmentId}/compare`, {
+      method: 'POST',
+      body: body as Record<string, unknown>
+    });
     setStatus(set, result.status);
     return result.data;
   })

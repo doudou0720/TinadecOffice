@@ -4,6 +4,7 @@ using Microsoft.Data.Sqlite;
 using TinadecCore.Services;
 using Tinadec.Contracts.Events;
 using TinadecModel.Providers;
+using TinadecModel.Storage;
 using Tinadec.Contracts.Models;
 
 namespace TinadecCore.Storage;
@@ -362,6 +363,34 @@ public sealed class CoreStore
                     status text not null,
                     created_at text not null
                 );
+
+                create table if not exists prompt_fragment_versions (
+                    id text primary key,
+                    fragment_id text not null,
+                    version integer not null,
+                    content text not null,
+                    changed_fields_json text not null,
+                    change_summary text not null,
+                    is_active integer not null default 0,
+                    created_at text not null
+                );
+
+                create table if not exists prompt_fragment_signals (
+                    id text primary key,
+                    fragment_id text not null,
+                    version integer,
+                    signal text not null,
+                    run_id text,
+                    session_id text,
+                    note text,
+                    created_at text not null
+                );
+
+                create index if not exists idx_prompt_fragment_versions_fragment
+                    on prompt_fragment_versions(fragment_id, version);
+
+                create index if not exists idx_prompt_fragment_signals_fragment
+                    on prompt_fragment_signals(fragment_id, version, created_at);
                 """);
 
             // Migration: add system_prompt column to agent_profiles if missing
@@ -3686,4 +3715,166 @@ public sealed class CoreStore
         int FailureCount,
         DateTimeOffset? LastFailureAt,
         ProviderErrorCategory? LastErrorCategory);
+
+    // === Agent Evolution Support ===
+
+    public void AddAgentCandidate(AgentCandidateSeed seed)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into agent_candidates (id, generated_by_agent_id, name, layer, agent_type, description,
+                                          suggested_tools_json, evaluation_notes_json, status, created_at)
+            values ($id, $generated_by_agent_id, $name, $layer, $agent_type, $description,
+                    $suggested_tools_json, $evaluation_notes_json, $status, $created_at)
+            """;
+        command.Parameters.AddWithValue("$id", seed.Id);
+        command.Parameters.AddWithValue("$generated_by_agent_id", seed.GeneratedByAgentId);
+        command.Parameters.AddWithValue("$name", seed.Name);
+        command.Parameters.AddWithValue("$layer", seed.Layer);
+        command.Parameters.AddWithValue("$agent_type", seed.AgentType);
+        command.Parameters.AddWithValue("$description", seed.Description);
+        command.Parameters.AddWithValue("$suggested_tools_json", JsonSerializer.Serialize(seed.SuggestedTools));
+        command.Parameters.AddWithValue("$evaluation_notes_json", JsonSerializer.Serialize(seed.EvaluationNotes));
+        command.Parameters.AddWithValue("$status", "proposed");
+        command.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    public bool UpdateCandidateStatus(string candidateId, string status)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "update agent_candidates set status = $status where id = $id";
+        command.Parameters.AddWithValue("$id", candidateId);
+        command.Parameters.AddWithValue("$status", status);
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    // === Prompt Fragment Versioning Support ===
+
+    public IReadOnlyList<PromptFragmentVersionDto> ListPromptFragmentVersions(string fragmentId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            select id, fragment_id, version, content, changed_fields_json, change_summary,
+                   is_active, created_at
+            from prompt_fragment_versions
+            where fragment_id = $fragment_id
+            order by version desc
+            """;
+        command.Parameters.AddWithValue("$fragment_id", fragmentId);
+        using var reader = command.ExecuteReader();
+        var versions = new List<PromptFragmentVersionDto>();
+        while (reader.Read())
+        {
+            versions.Add(new PromptFragmentVersionDto(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                reader.GetString(3),
+                JsonSerializer.Deserialize<string[]>(reader.GetString(4)) ?? Array.Empty<string>(),
+                reader.GetString(5),
+                reader.GetBoolean(6),
+                DateTimeOffset.Parse(reader.GetString(7), null, System.Globalization.DateTimeStyles.RoundtripKind)));
+        }
+        return versions;
+    }
+
+    public void SavePromptFragmentVersion(PromptFragmentVersionDto version)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into prompt_fragment_versions (id, fragment_id, version, content, changed_fields_json,
+                                                   change_summary, is_active, created_at)
+            values ($id, $fragment_id, $version, $content, $changed_fields_json,
+                    $change_summary, $is_active, $created_at)
+            """;
+        command.Parameters.AddWithValue("$id", version.Id);
+        command.Parameters.AddWithValue("$fragment_id", version.FragmentId);
+        command.Parameters.AddWithValue("$version", version.Version);
+        command.Parameters.AddWithValue("$content", version.Content);
+        command.Parameters.AddWithValue("$changed_fields_json", JsonSerializer.Serialize(version.ChangedFields));
+        command.Parameters.AddWithValue("$change_summary", version.ChangeSummary);
+        command.Parameters.AddWithValue("$is_active", version.IsActive ? 1 : 0);
+        command.Parameters.AddWithValue("$created_at", version.CreatedAt.ToString("O"));
+        command.ExecuteNonQuery();
+    }
+
+    public void DeactivatePromptFragmentVersion(string versionId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "update prompt_fragment_versions set is_active = 0 where id = $id";
+        command.Parameters.AddWithValue("$id", versionId);
+        command.ExecuteNonQuery();
+    }
+
+    public (int PositiveCount, int NegativeCount, DateTimeOffset LastEvaluatedAt) GetPromptFragmentSignalStats(string fragmentId)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            select
+                sum(case when signal = 'positive' then 1 else 0 end) as positive,
+                sum(case when signal = 'negative' then 1 else 0 end) as negative,
+                max(created_at) as last_at
+            from prompt_fragment_signals
+            where fragment_id = $fragment_id
+            """;
+        command.Parameters.AddWithValue("$fragment_id", fragmentId);
+        using var reader = command.ExecuteReader();
+        if (reader.Read())
+        {
+            var positive = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+            var negative = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+            var lastAt = reader.IsDBNull(2) ? DateTimeOffset.UtcNow : DateTimeOffset.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
+            return (positive, negative, lastAt);
+        }
+        return (0, 0, DateTimeOffset.UtcNow);
+    }
+
+    public (int PositiveCount, int NegativeCount) GetPromptFragmentVersionSignalStats(string fragmentId, int version)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            select
+                sum(case when signal = 'positive' then 1 else 0 end) as positive,
+                sum(case when signal = 'negative' then 1 else 0 end) as negative
+            from prompt_fragment_signals
+            where fragment_id = $fragment_id and version = $version
+            """;
+        command.Parameters.AddWithValue("$fragment_id", fragmentId);
+        command.Parameters.AddWithValue("$version", version);
+        using var reader = command.ExecuteReader();
+        if (reader.Read())
+        {
+            var positive = reader.IsDBNull(0) ? 0 : reader.GetInt32(0);
+            var negative = reader.IsDBNull(1) ? 0 : reader.GetInt32(1);
+            return (positive, negative);
+        }
+        return (0, 0);
+    }
+
+    public void RecordPromptFragmentSignal(string fragmentId, string signal, string? runId, string? sessionId, string? note, int? version = null)
+    {
+        using var connection = OpenConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into prompt_fragment_signals (id, fragment_id, version, signal, run_id, session_id, note, created_at)
+            values ($id, $fragment_id, $version, $signal, $run_id, $session_id, $note, $created_at)
+            """;
+        command.Parameters.AddWithValue("$id", $"sig_{Guid.NewGuid():N}");
+        command.Parameters.AddWithValue("$fragment_id", fragmentId);
+        command.Parameters.AddWithValue("$version", (object?)version ?? DBNull.Value);
+        command.Parameters.AddWithValue("$signal", signal);
+        command.Parameters.AddWithValue("$run_id", (object?)runId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$session_id", (object?)sessionId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$note", (object?)note ?? DBNull.Value);
+        command.Parameters.AddWithValue("$created_at", DateTimeOffset.UtcNow.ToString("O"));
+        command.ExecuteNonQuery();
+    }
 }

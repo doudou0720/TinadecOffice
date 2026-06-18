@@ -630,7 +630,9 @@ public sealed record ModelInvocationResultDto(
     int? ProviderExitCode = null,
     string? SafeErrorMessage = null,
     string? ErrorProviderId = null,
-    IReadOnlyList<ToolCallDto>? ToolCalls = null);
+    IReadOnlyList<ToolCallDto>? ToolCalls = null,
+    ModelUsageDto? Usage = null,
+    ModelFinishReason? FinishReason = null);
 
 public sealed record ModelInvocationRequestDto(
     IReadOnlyList<MessageDto> Messages,
@@ -669,6 +671,10 @@ public enum ModelFinishReason
     Error,
     [JsonStringEnumMemberName("cancelled")]
     Cancelled,
+    [JsonStringEnumMemberName("approval_required")]
+    ApprovalRequired,
+    [JsonStringEnumMemberName("max_turns")]
+    MaxTurns,
     [JsonStringEnumMemberName("unknown")]
     Unknown
 }
@@ -738,3 +744,97 @@ public sealed record ModelToolFunctionDto(
     string Name,
     string Description,
     IReadOnlyDictionary<string, object?> Parameters);
+
+/// <summary>
+/// 流式生成的一个增量块。按 SSE 推送给前端，拼装出完整 assistant 消息。
+/// </summary>
+public sealed record ModelStreamChunkDto(
+    string RunId,
+    string SessionId,
+    string Purpose,
+    string ProviderInstanceId,
+    string? EffectiveModel,
+    ModelStreamChunkKind Kind,
+    string? Delta = null,
+    ToolCallDto? ToolCallDelta = null,
+    ModelUsageDto? Usage = null,
+    ModelFinishReason? FinishReason = null,
+    ProviderErrorCategory? ErrorCategory = null,
+    bool IsRetryable = false,
+    bool FallbackProviderSelected = false,
+    string? SafeErrorMessage = null,
+    string? ErrorProviderId = null);
+
+[JsonConverter(typeof(JsonStringEnumConverter<ModelStreamChunkKind>))]
+public enum ModelStreamChunkKind
+{
+    [JsonStringEnumMemberName("context")]
+    Context,
+    [JsonStringEnumMemberName("delta")]
+    Delta,
+    [JsonStringEnumMemberName("tool_call_delta")]
+    ToolCallDelta,
+    [JsonStringEnumMemberName("usage")]
+    Usage,
+    [JsonStringEnumMemberName("done")]
+    Done,
+    [JsonStringEnumMemberName("error")]
+    Error
+}
+
+/// <summary>
+/// 启发式 Agent 候选生成请求。Evolution Agent 观察工作流后产出 AgentCandidate，
+/// Core 审批后可提升为正式 AgentProfile。
+/// </summary>
+public sealed record AgentEvolutionProposalDto(
+    string Id,
+    string GeneratedByAgentId,
+    string Name,
+    string Layer,
+    string AgentType,
+    string Description,
+    IReadOnlyList<string> SuggestedTools,
+    IReadOnlyList<string> EvaluationNotes,
+    IReadOnlyList<string> ObservedPatterns,
+    double ConfidenceScore,
+    string Status,
+    DateTimeOffset CreatedAt);
+
+public sealed record PromoteAgentCandidateRequest(
+    string AgentId,
+    string Mode,
+    string ModelRoutePurpose,
+    IReadOnlyList<string> AllowedTools,
+    IReadOnlyList<string> Capabilities,
+    string? SystemPrompt);
+
+/// <summary>
+/// 提示词片段版本快照。每次更新生成一个版本，支持回滚和 A/B 对比。
+/// </summary>
+public sealed record PromptFragmentVersionDto(
+    string Id,
+    string FragmentId,
+    int Version,
+    string Content,
+    IReadOnlyList<string> ChangedFields,
+    string ChangeSummary,
+    bool IsActive,
+    DateTimeOffset CreatedAt);
+
+public sealed record PromptFragmentEffectivenessDto(
+    string FragmentId,
+    int ActiveVersion,
+    int TotalInvocations,
+    int PositiveSignals,
+    int NegativeSignals,
+    double EffectivenessScore,
+    DateTimeOffset LastEvaluatedAt,
+    IReadOnlyList<PromptFragmentVersionDto> Versions);
+
+public sealed record PromptFragmentEffectivenessInput(
+    string FragmentId,
+    string Signal, // "positive" | "negative"
+    string? RunId = null,
+    string? SessionId = null,
+    string? Note = null,
+    int? Version = null);

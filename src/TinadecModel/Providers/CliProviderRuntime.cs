@@ -98,6 +98,19 @@ public sealed partial class CliProviderRuntime : IModelProviderRuntime
             BuildFailureMessage(processResult.Stderr, apiKey));
     }
 
+    /// <summary>
+    /// CLI runtime 不支持流式输出（进程一次性返回 stdout），抛出 NotSupportedException 触发回退。
+    /// </summary>
+    public IAsyncEnumerable<ModelStreamChunkDto> StreamAsync(
+        ResolvedModelInvocationContextDto context,
+        string? apiKey,
+        IReadOnlyList<MessageDto> messages,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<ModelToolSpecDto>? tools = null)
+    {
+        throw new NotSupportedException("CLI provider does not support streaming. Falling back to non-streaming generation.");
+    }
+
     private ModelInvocationResultDto? ValidateConfiguration(ResolvedModelInvocationContextDto context)
     {
         if (context.Provider is null)

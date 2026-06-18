@@ -57,15 +57,15 @@ function goToAgentSettings() {
           <UiDropdownMenu v-model:open="showPlusMenu" placement="top" class="plus-dropdown-menu">
             <template #trigger>
               <UiButton variant="ghost" size="icon" class="composer-plus">
-                <Plus :size="16" />
+                <Plus :size="14" />
               </UiButton>
             </template>
             <button class="plus-menu-item" @click="emit('add-image'); showPlusMenu = false">
-              <Image :size="14" />
+              <Image :size="12" />
               <span>{{ t('chat.addImage') }}</span>
             </button>
             <button class="plus-menu-item" @click="emit('add-file'); showPlusMenu = false">
-              <FileText :size="14" />
+              <FileText :size="12" />
               <span>{{ t('chat.addFile') }}</span>
             </button>
           </UiDropdownMenu>
@@ -88,7 +88,7 @@ function goToAgentSettings() {
           :disabled="busy || !modelValue.trim()"
           @click="emit('submit')"
         >
-          <ArrowUp :size="16" />
+          <ArrowUp :size="14" />
         </UiButton>
       </div>
 
@@ -105,7 +105,7 @@ function goToAgentSettings() {
         </div>
         <div class="composer-toolbar-right">
           <button class="composer-agent-config" @click="goToAgentSettings">
-            <Settings :size="12" />
+            <Settings :size="11" />
             <span>{{ t('chat.agentConfig') }}</span>
           </button>
         </div>

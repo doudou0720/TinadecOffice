@@ -1,4 +1,5 @@
 using Tinadec.Contracts.Models;
+using TinadecModel.Services;
 using TinadecCore.Services;
 
 namespace TinadecCore.Tests;

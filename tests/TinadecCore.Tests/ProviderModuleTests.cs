@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Tinadec.Contracts.Models;
+using TinadecModel.Abstractions;
+using TinadecModel.Providers;
 using TinadecCore.Abstractions;
 using TinadecCore.Services;
 
@@ -122,6 +124,14 @@ public sealed class ProviderModuleTests
                 false,
                 RuntimeId));
         }
+
+        public IAsyncEnumerable<ModelStreamChunkDto> StreamAsync(
+            ResolvedModelInvocationContextDto context,
+            string? apiKey,
+            IReadOnlyList<MessageDto> messages,
+            CancellationToken cancellationToken = default,
+            IReadOnlyList<ModelToolSpecDto>? tools = null)
+            => throw new NotSupportedException();
     }
 
     private sealed class FixedRouteResolver(string connectionKind) : IModelRouteResolver

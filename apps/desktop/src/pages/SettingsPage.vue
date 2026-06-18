@@ -8,8 +8,10 @@ import {
   Circle,
   Cloud,
   Cpu,
+  Dna,
   Edit3,
   FileText,
+  GitBranch,
   Globe,
   HardDrive,
   Info,
@@ -78,8 +80,10 @@ import {
 } from '../toolCatalog'
 import { UiButton, UiInput, UiCard, UiBadge, UiLabel, UiSwitch } from '@/components/ui'
 import AgentTopologyCanvas from '@/components/AgentTopologyCanvas.vue'
+import AgentEvolutionPanel from '@/components/AgentEvolutionPanel.vue'
+import PromptEngineeringPanel from '@/components/PromptEngineeringPanel.vue'
 
-type SettingsSection = 'model' | 'agents' | 'promptContext' | 'tools' | 'appearance' | 'language' | 'apiDocs' | 'about'
+type SettingsSection = 'model' | 'agents' | 'agentEvolution' | 'promptContext' | 'promptEngineering' | 'tools' | 'appearance' | 'language' | 'apiDocs' | 'about'
 
 interface ProviderForm {
   id: string
@@ -197,7 +201,9 @@ const providerForm = reactive<ProviderForm>({
 const navItems = computed(() => [
   { key: 'model' as const, icon: KeyRound, label: t('settings.model') },
   { key: 'agents' as const, icon: Workflow, label: t('settings.agents') },
+  { key: 'agentEvolution' as const, icon: Dna, label: 'Agent Evolution' },
   { key: 'promptContext' as const, icon: Bot, label: 'Prompt Context' },
+  { key: 'promptEngineering' as const, icon: GitBranch, label: 'Prompt Engineering' },
   { key: 'tools' as const, icon: Terminal, label: t('settings.toolLayer') },
   { key: 'appearance' as const, icon: Palette, label: t('settings.appearance') },
   { key: 'language' as const, icon: Globe, label: t('settings.language') },
@@ -1554,6 +1560,10 @@ loadPromptContextCenter()
           </div>
         </template>
 
+        <template v-if="activeSection === 'agentEvolution'">
+          <AgentEvolutionPanel />
+        </template>
+
         <template v-if="activeSection === 'promptContext'">
           <div class="model-center-heading">
             <div>
@@ -1795,6 +1805,10 @@ loadPromptContextCenter()
               </template>
             </template>
           </UiCard>
+        </template>
+
+        <template v-if="activeSection === 'promptEngineering'">
+          <PromptEngineeringPanel />
         </template>
 
         <template v-if="activeSection === 'tools'">

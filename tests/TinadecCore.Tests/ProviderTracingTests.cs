@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Tinadec.Contracts.Models;
+using TinadecModel.Abstractions;
+using TinadecModel.Providers;
 using TinadecCore.Abstractions;
 using TinadecCore.Services;
 using TinadecCore.Storage;
@@ -230,6 +232,14 @@ public sealed class ProviderTracingTests
             var response = Responses[context.ProviderInstanceId](context);
             return Task.FromResult(response);
         }
+
+        public IAsyncEnumerable<ModelStreamChunkDto> StreamAsync(
+            ResolvedModelInvocationContextDto context,
+            string? apiKey,
+            IReadOnlyList<MessageDto> messages,
+            CancellationToken cancellationToken = default,
+            IReadOnlyList<ModelToolSpecDto>? tools = null)
+            => throw new NotSupportedException();
     }
 
     private sealed class ActivityCollector : IDisposable

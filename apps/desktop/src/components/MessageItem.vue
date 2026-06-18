@@ -72,11 +72,11 @@ const hasToolCalls = computed(() => messageToolCalls.value.length > 0)
           <!-- Agent 标签和时间戳 -->
           <div v-if="agentLabel || timeLabel" class="assistant-meta-row">
             <div class="assistant-agent-tag">
-              <Bot :size="11" />
+              <Bot :size="10" />
               <span>{{ agentLabel ?? '智能体' }}</span>
             </div>
             <span v-if="timeLabel" class="assistant-time">
-              <Clock :size="10" />
+              <Clock :size="9" />
               {{ timeLabel }}
             </span>
           </div>
@@ -106,11 +106,11 @@ const hasToolCalls = computed(() => messageToolCalls.value.length > 0)
         <!-- 左侧操作按钮 -->
         <div class="user-message-actions">
           <UiButton variant="ghost" size="icon" class="message-action-btn" :title="$t('chat.copy')" @click="handleCopy">
-            <Check v-if="copied" :size="12" />
-            <Copy v-else :size="12" />
+            <Check v-if="copied" :size="11" />
+            <Copy v-else :size="11" />
           </UiButton>
           <UiButton variant="ghost" size="icon" class="message-action-btn" :title="$t('chat.edit')" @click="startEdit">
-            <Pencil :size="12" />
+            <Pencil :size="11" />
           </UiButton>
         </div>
 
@@ -126,7 +126,7 @@ const hasToolCalls = computed(() => messageToolCalls.value.length > 0)
           <template v-else>
             <p>{{ message.content }}</p>
             <div v-if="timeLabel" class="user-message-time">
-              <Clock :size="10" />
+              <Clock :size="9" />
               {{ timeLabel }}
             </div>
           </template>

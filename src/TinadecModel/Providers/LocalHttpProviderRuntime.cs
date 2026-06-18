@@ -80,6 +80,32 @@ public sealed class LocalHttpProviderRuntime(HttpClient httpClient, OpenAiCompat
         }
     }
 
+    /// <summary>
+    /// 本地 HTTP 流式。OpenAI 兼容策略复用 OpenAiCompatibleClient 的 SSE 解析器；
+    /// 其他策略抛出 NotSupportedException 触发回退。
+    /// </summary>
+    public IAsyncEnumerable<ModelStreamChunkDto> StreamAsync(
+        ResolvedModelInvocationContextDto context,
+        string? apiKey,
+        IReadOnlyList<MessageDto> messages,
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<ModelToolSpecDto>? tools = null)
+    {
+        if (ResolveAdapterStrategy(context.Driver) != LocalHttpAdapterStrategy.OpenAiCompatible)
+        {
+            throw new NotSupportedException("Local HTTP streaming is only supported for OpenAI-compatible adapter strategy.");
+        }
+
+        var settings = new StoredModelSettings(
+            context.EffectiveBaseUrl,
+            context.EffectiveModel,
+            context.EncryptedApiKey,
+            DateTimeOffset.UtcNow);
+
+        return openAiCompatibleClient.StreamChatCompletionsAsync(
+            settings, apiKey, messages, context.ProviderInstanceId, cancellationToken, tools);
+    }
+
     private async Task<ModelInvocationResponseDto> GenerateOpenAiCompatibleAsync(
         ResolvedModelInvocationContextDto context,
         string? apiKey,
