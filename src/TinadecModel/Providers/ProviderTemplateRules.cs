@@ -5,6 +5,7 @@ public static class ProviderTemplateRules
     private static readonly HashSet<string> OpenAiCompatibleDrivers = new(StringComparer.OrdinalIgnoreCase)
     {
         "openai-compatible",
+        "custom",
         "deepseek",
         "openrouter",
         "pollinations",

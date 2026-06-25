@@ -104,7 +104,8 @@ const app = new Elysia({ adapter: node() })
   .get('/api/v1/health', async ({ set }) => {
     const result = await proxyJson('/api/v1/health');
     setStatus(set, result.status);
-    return { ...result.data, gateway: 'ok', core_url: coreUrl };
+    const core = (result.data && typeof result.data === 'object' ? result.data : {}) as Record<string, unknown>;
+    return { ...core, gateway: 'ok', core_url: coreUrl };
   })
   .get('/api/v1/doctor', async ({ set }) => {
     const result = await proxyJson('/api/v1/doctor');
