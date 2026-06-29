@@ -350,15 +350,15 @@ internal class FileAccessor : IDisposable
                 nameof(content));
 
         // 计算长度是否一致
-        long writeLength = content.Select(ct => ct.LineLength).Sum();
-        long currentLength = index[endLine].LineEnd - index[startLine].LineStart + 1;
+        var writeLength = content.Select(ct => ct.LineLength).Sum();
+        var currentLength = index[endLine].LineEnd - index[startLine].LineStart + 1;
 
         if (writeLength == currentLength)
         {
             // OK！直接全部覆盖
-            string sooooooolong = string.Join('\n', content.Select(c => c.Content));
-            byte[] strByBytes = Encoding.UTF8.GetBytes(sooooooolong);
-            Memory<byte> buf = strByBytes.AsMemory();
+            var sooooooolong = string.Join('\n', content.Select(c => c.Content));
+            var strByBytes = Encoding.UTF8.GetBytes(sooooooolong);
+            var buf = strByBytes.AsMemory();
             await RandomAccess.WriteAsync(handle, buf, index[startLine].LineStart, CancellationToken.None);
         }
         else

@@ -6,14 +6,12 @@ namespace TinadecTools.Tools.Demo;
 
 internal sealed class EchoToolArgs
 {
-    [JsonPropertyName("text")]
-    public string Text { get; set; } = string.Empty;
+    [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
 }
 
 internal sealed class EchoToolResult
 {
-    [JsonPropertyName("echo")]
-    public string Echo { get; set; } = string.Empty;
+    [JsonPropertyName("echo")] public string Echo { get; set; } = string.Empty;
 }
 
 [JsonSourceGenerationOptions(WriteIndented = false)]
@@ -31,12 +29,10 @@ internal static class EchoTool
         CancellationToken cancellationToken)
     {
         if (request.Params.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-        {
             throw new InvalidOperationException("Tool 'echo' requires params.");
-        }
 
         var args = JsonSerializer.Deserialize(request.Params, EchoToolJsonContext.Default.EchoToolArgs)
-            ?? throw new InvalidOperationException("Tool 'echo' params could not be parsed.");
+                   ?? throw new InvalidOperationException("Tool 'echo' params could not be parsed.");
 
         var result = new EchoToolResult { Echo = args.Text };
 

@@ -7,17 +7,14 @@ namespace TinadecTools.Tools.Demo;
 
 internal sealed class StatefulToolArgs
 {
-    [JsonPropertyName("message")]
-    public string Message { get; set; } = string.Empty;
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
 }
 
 internal sealed class StatefulToolResult
 {
-    [JsonPropertyName("prefix")]
-    public string Prefix { get; set; } = string.Empty;
+    [JsonPropertyName("prefix")] public string Prefix { get; set; } = string.Empty;
 
-    [JsonPropertyName("message")]
-    public string Message { get; set; } = string.Empty;
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
 }
 
 [JsonSourceGenerationOptions(WriteIndented = false)]
@@ -31,7 +28,8 @@ internal sealed class StatefulTool(string prefix) : ToolHandlerBase<StatefulTool
 
     protected override JsonTypeInfo<StatefulToolArgs> ArgsTypeInfo => StatefulToolJsonContext.Default.StatefulToolArgs;
 
-    protected override JsonTypeInfo<StatefulToolResult> ResultTypeInfo => StatefulToolJsonContext.Default.StatefulToolResult;
+    protected override JsonTypeInfo<StatefulToolResult> ResultTypeInfo =>
+        StatefulToolJsonContext.Default.StatefulToolResult;
 
     protected override ValueTask<StatefulToolResult> ExecuteAsync(
         StatefulToolArgs args,

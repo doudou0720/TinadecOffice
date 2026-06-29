@@ -25,12 +25,10 @@ internal abstract class ToolHandlerBase<TArgs, TResult>
         CancellationToken cancellationToken = default)
     {
         if (request.Params.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-        {
             throw new InvalidOperationException($"Tool '{ToolId}' requires params.");
-        }
 
         var args = JsonSerializer.Deserialize(request.Params, ArgsTypeInfo)
-            ?? throw new InvalidOperationException($"Tool '{ToolId}' params could not be parsed.");
+                   ?? throw new InvalidOperationException($"Tool '{ToolId}' params could not be parsed.");
 
         var result = await ExecuteAsync(args, request, cancellationToken).ConfigureAwait(false);
 

@@ -28,8 +28,7 @@ internal class ToolCallRequest<TParams> where TParams : notnull
     [JsonPropertyName("approved")]
     public bool Approved { get; set; } = false;
 
-    [JsonPropertyName("params")]
-    public TParams? Params { get; set; }
+    [JsonPropertyName("params")] public TParams? Params { get; set; }
 }
 
 internal class ToolCallResponse<TResponse>

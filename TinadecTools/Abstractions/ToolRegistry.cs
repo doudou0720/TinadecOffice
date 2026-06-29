@@ -26,16 +26,16 @@ internal static class ToolRegistry
     }
 
     public static bool TryResolve(string toolId, out ToolHandlerDelegate handler)
-        => Handlers.TryGetValue(toolId, out handler!);
+    {
+        return Handlers.TryGetValue(toolId, out handler!);
+    }
 
     public static ValueTask<ToolCallResponse<JsonElement>> DispatchAsync(
         ToolCallRequest<JsonElement> request,
         CancellationToken cancellationToken = default)
     {
         if (!TryResolve(request.ToolId, out var handler))
-        {
             throw new InvalidOperationException($"Unknown tool '{request.ToolId}'.");
-        }
 
         return handler(request, cancellationToken);
     }
