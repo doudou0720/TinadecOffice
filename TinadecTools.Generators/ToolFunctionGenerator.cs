@@ -21,11 +21,30 @@ public sealed class ToolFunctionGenerator : IIncrementalGenerator
 
         context.RegisterSourceOutput(methods, static (spc, items) =>
         {
-            var methodsByToolId = new List<(string ToolId, string ContainingType, string MethodName)>();
+            var source = new StringBuilder();
+            source.AppendLine("using System.Text.Json.Serialization.Metadata;");
+            source.AppendLine("using TinadecTools.Abstractions;");
+            source.AppendLine();
+            source.AppendLine("namespace TinadecTools.Abstractions;");
+            source.AppendLine();
+            source.AppendLine("internal static partial class GeneratedToolRegistry");
+            source.AppendLine("{");
+            source.AppendLine("    public static void RegisterAll()");
+            source.AppendLine("    {");
 
             foreach (var item in items)
             {
                 if (item.TargetSymbol is not IMethodSymbol method)
+                {
+                    continue;
+                }
+
+                if (!method.IsStatic || method.Parameters.Length != 2)
+                {
+                    continue;
+                }
+
+                if (method.Parameters[1].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) != "global::System.Threading.CancellationToken")
                 {
                     continue;
                 }
@@ -44,40 +63,35 @@ public sealed class ToolFunctionGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                methodsByToolId.Add((
-                    toolId!,
-                    method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    method.Name));
+                var argsType = method.Parameters[0].Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                var resultType = GetResultType(method.ReturnType);
+                if (resultType is null)
+                {
+                    continue;
+                }
+
+                var containingType = method.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                var contextType = $"{method.ContainingType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{method.ContainingType.Name}JsonContext";
+                var contextVar = $"{method.ContainingType.Name.ToLowerInvariant()}Json";
+
+                source.AppendLine($"""        var {contextVar} = new {contextType}();""");
+                source.AppendLine($"""        ToolRegistry.Register<{argsType}, {resultType}>("{escape(toolId!)}", {containingType}.{method.Name}, (JsonTypeInfo<{argsType}>) {contextVar}.GetTypeInfo(typeof({argsType}))!, (JsonTypeInfo<{resultType}>) {contextVar}.GetTypeInfo(typeof({resultType}))!);""");
             }
 
-            var source = generateRegistry(methodsByToolId);
-            spc.AddSource("ToolFunctionRegistry.g.cs", SourceText.From(source, Encoding.UTF8));
+            source.AppendLine("    }");
+            source.AppendLine("}");
+            spc.AddSource("ToolFunctionRegistry.g.cs", SourceText.From(source.ToString(), Encoding.UTF8));
         });
     }
 
-    private static string generateRegistry(IReadOnlyList<(string ToolId, string ContainingType, string MethodName)> methods)
+    private static string? GetResultType(ITypeSymbol returnType)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("using System;");
-        sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using System.Text.Json;");
-        sb.AppendLine("using TinadecTools.Abstractions;");
-        sb.AppendLine();
-        sb.AppendLine("namespace TinadecTools.Abstractions;");
-        sb.AppendLine();
-        sb.AppendLine("internal static partial class GeneratedToolRegistry");
-        sb.AppendLine("{");
-        sb.AppendLine("    public static void RegisterAll()");
-        sb.AppendLine("    {");
-
-        foreach (var (toolId, containingType, methodName) in methods)
+        if (returnType is not INamedTypeSymbol namedType || namedType.Name != "ValueTask" || namedType.TypeArguments.Length != 1)
         {
-            sb.AppendLine($"""        ToolRegistry.Register("{escape(toolId)}", {containingType}.{methodName});""");
+            return null;
         }
 
-        sb.AppendLine("    }");
-        sb.AppendLine("}");
-        return sb.ToString();
+        return namedType.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
     }
 
     private static string escape(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");

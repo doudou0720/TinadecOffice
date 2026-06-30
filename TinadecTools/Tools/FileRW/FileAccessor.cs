@@ -32,14 +32,16 @@ public record struct LineContent(
 
 internal class FileAccessor : IDisposable
 {
-    private readonly FileStream file;
-    private List<LineSpan> index = new();
-    private readonly string filepath;
-    private readonly SafeFileHandle handle;
-    private static readonly Logger logger = LogManager.GetCurrentClassLogger();
-    private static readonly UTF8Encoding utf8_no_bom = new(false);
-    private const int stream_buffer_size = 128 * 1024;
-    private const int text_buffer_size = 16 * 1024;
+    private readonly FileStream _file;
+    private List<LineSpan> _index = new();
+    private readonly string _filepath;
+    private readonly SafeFileHandle _handle;
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly UTF8Encoding Utf8NoBom = new(false);
+    private const int StreamBufferSize = 128 * 1024;
+    private const int TextBufferSize = 16 * 1024;
+
+    public int LineCount => _index.Count;
 
     static FileAccessor()
     {
@@ -52,47 +54,47 @@ internal class FileAccessor : IDisposable
     /// <param name="filepath">文件路径</param>
     internal FileAccessor(string filepath)
     {
-        this.filepath = filepath;
-        file = new FileStream(filepath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
+        _filepath = filepath;
+        _file = new FileStream(filepath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
             FileShare.ReadWrite | FileShare.Delete, 1024,
             FileOptions.Asynchronous);
-        handle = file.SafeFileHandle;
-        normalizeTextFile();
-        buildIndex();
+        _handle = _file.SafeFileHandle;
+        NormalizeTextFile();
+        BuildIndex();
     }
 
     /// <summary>
     /// 打开文件时流式检测全文编码，并静默保存为 UTF-8（无 BOM）+ LF。
     /// </summary>
-    private void normalizeTextFile()
+    private void NormalizeTextFile()
     {
-        if (file.Length == 0)
+        if (_file.Length == 0)
             return;
 
-        file.Seek(0, SeekOrigin.Begin);
-        var detection = CharsetDetector.DetectFromStream(file);
+        _file.Seek(0, SeekOrigin.Begin);
+        var detection = CharsetDetector.DetectFromStream(_file);
         var detected = detection.Detected;
         var encoding = detected?.Encoding ?? Encoding.UTF8;
 
-        if (isUtf8Compatible(encoding) &&
+        if (IsUtf8Compatible(encoding) &&
             detected?.HasBOM != true &&
-            !containsCarriageReturn())
+            !ContainsCarriageReturn())
         {
-            file.Seek(0, SeekOrigin.Begin);
+            _file.Seek(0, SeekOrigin.Begin);
             return;
         }
 
-        var tempPath = getTempPath();
+        var tempPath = GetTempPath();
         try
         {
-            writeNormalizedTempFile(tempPath, encoding);
+            WriteNormalizedTempFile(tempPath, encoding);
 
-            file.SetLength(0);
-            file.Seek(0, SeekOrigin.Begin);
+            _file.SetLength(0);
+            _file.Seek(0, SeekOrigin.Begin);
             using var tempInput = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                stream_buffer_size, FileOptions.SequentialScan);
-            tempInput.CopyTo(file, stream_buffer_size);
-            file.Flush();
+                StreamBufferSize, FileOptions.SequentialScan);
+            tempInput.CopyTo(_file, StreamBufferSize);
+            _file.Flush();
         }
         finally
         {
@@ -103,38 +105,38 @@ internal class FileAccessor : IDisposable
             }
             catch (IOException ex)
             {
-                logger.Warn(ex, $"删除临时文件 {tempPath} 失败");
+                Logger.Warn(ex, $"删除临时文件 {tempPath} 失败");
             }
 
-            file.Seek(0, SeekOrigin.Begin);
+            _file.Seek(0, SeekOrigin.Begin);
         }
     }
 
-    private static bool isUtf8Compatible(Encoding encoding)
+    private static bool IsUtf8Compatible(Encoding encoding)
     {
         return encoding.CodePage == Encoding.UTF8.CodePage ||
                encoding.CodePage == Encoding.ASCII.CodePage;
     }
 
-    private string getTempPath()
+    private string GetTempPath()
     {
-        var directory = Path.GetDirectoryName(filepath);
-        var filename = Path.GetFileName(filepath);
+        var directory = Path.GetDirectoryName(_filepath);
+        var filename = Path.GetFileName(_filepath);
         return Path.Combine(
             string.IsNullOrEmpty(directory) ? "." : directory,
             $".{filename}.{Guid.NewGuid():N}.tmp");
     }
 
-    private bool containsCarriageReturn()
+    private bool ContainsCarriageReturn()
     {
-        file.Seek(0, SeekOrigin.Begin);
+        _file.Seek(0, SeekOrigin.Begin);
 
-        var buffer = ArrayPool<byte>.Shared.Rent(stream_buffer_size);
+        var buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
         try
         {
             while (true)
             {
-                var bytesRead = file.Read(buffer, 0, buffer.Length);
+                var bytesRead = _file.Read(buffer, 0, buffer.Length);
                 if (bytesRead == 0)
                     return false;
 
@@ -146,19 +148,19 @@ internal class FileAccessor : IDisposable
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            file.Seek(0, SeekOrigin.Begin);
+            _file.Seek(0, SeekOrigin.Begin);
         }
     }
 
-    private void writeNormalizedTempFile(string tempPath, Encoding encoding)
+    private void WriteNormalizedTempFile(string tempPath, Encoding encoding)
     {
-        file.Seek(0, SeekOrigin.Begin);
+        _file.Seek(0, SeekOrigin.Begin);
 
-        using var reader = new StreamReader(file, encoding, false, stream_buffer_size, true);
+        using var reader = new StreamReader(_file, encoding, false, StreamBufferSize, true);
         using var tempOutput = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-            stream_buffer_size, FileOptions.SequentialScan);
-        using var writer = new StreamWriter(tempOutput, utf8_no_bom, stream_buffer_size);
-        var buffer = ArrayPool<char>.Shared.Rent(text_buffer_size);
+            StreamBufferSize, FileOptions.SequentialScan);
+        using var writer = new StreamWriter(tempOutput, Utf8NoBom, StreamBufferSize);
+        var buffer = ArrayPool<char>.Shared.Rent(TextBufferSize);
         var firstChar = true;
         var previousWasCr = false;
 
@@ -208,15 +210,15 @@ internal class FileAccessor : IDisposable
     /// <summary>
     /// 手动建立行号偏移索引
     /// </summary>
-    private void buildIndex()
+    private void BuildIndex()
     {
-        index.Clear();
-        file.Seek(0, SeekOrigin.Begin);
+        _index.Clear();
+        _file.Seek(0, SeekOrigin.Begin);
 
-        if (file.Length == 0)
+        if (_file.Length == 0)
             return;
 
-        var buffer = ArrayPool<byte>.Shared.Rent(stream_buffer_size);
+        var buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
         try
         {
             long currentOffset = 0;
@@ -224,7 +226,7 @@ internal class FileAccessor : IDisposable
 
             while (true)
             {
-                var bytesRead = file.Read(buffer, 0, buffer.Length);
+                var bytesRead = _file.Read(buffer, 0, buffer.Length);
                 if (bytesRead == 0)
                     break;
 
@@ -233,19 +235,19 @@ internal class FileAccessor : IDisposable
                     currentOffset++;
                     if (buffer[i] == '\n')
                     {
-                        index.Add(new LineSpan(lineStart, currentOffset - 1, currentOffset));
+                        _index.Add(new LineSpan(lineStart, currentOffset - 1, currentOffset));
                         lineStart = currentOffset;
                     }
                 }
             }
 
-            if (lineStart < file.Length)
-                index.Add(new LineSpan(lineStart, file.Length, file.Length));
+            if (lineStart < _file.Length)
+                _index.Add(new LineSpan(lineStart, _file.Length, _file.Length));
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            file.Seek(0, SeekOrigin.Begin);
+            _file.Seek(0, SeekOrigin.Begin);
         }
     }
 
@@ -264,28 +266,28 @@ internal class FileAccessor : IDisposable
             var endLine = range.Value;
 
             // 验证范围
-            if (startLine < 0 || startLine >= index.Count)
+            if (startLine < 0 || startLine >= _index.Count)
             {
-                logger.Warn($"起始行号 {startLine} 超出范围 [0, {index.Count})");
+                Logger.Warn($"起始行号 {startLine} 超出范围 [0, {_index.Count})");
                 continue;
             }
 
-            if (endLine < 0 || endLine >= index.Count)
+            if (endLine < 0 || endLine >= _index.Count)
             {
-                logger.Warn($"结束行号 {endLine} 超出范围 [0, {index.Count})");
+                Logger.Warn($"结束行号 {endLine} 超出范围 [0, {_index.Count})");
                 continue;
             }
 
             if (startLine > endLine)
             {
-                logger.Warn($"起始行号 {startLine} 大于结束行号 {endLine}");
+                Logger.Warn($"起始行号 {startLine} 大于结束行号 {endLine}");
                 continue;
             }
 
             // 读取这个范围内的所有行
             for (var line = startLine; line <= endLine; line++)
             {
-                var span = index[line];
+                var span = _index[line];
                 var length = span.LineEnd - span.LineStart;
 
                 if (length <= 0)
@@ -302,10 +304,10 @@ internal class FileAccessor : IDisposable
                 {
                     var memory = buf.AsMemory(0, (int)length);
                     var bytesRead =
-                        await RandomAccess.ReadAsync(handle, memory, span.LineStart, CancellationToken.None);
+                        await RandomAccess.ReadAsync(_handle, memory, span.LineStart, CancellationToken.None);
 
                     if (bytesRead < length)
-                        logger.Warn($"读取 {filepath} 偏移 {span.LineStart} 预期 {length} 字节，实际 {bytesRead}");
+                        Logger.Warn($"读取 {_filepath} 偏移 {span.LineStart} 预期 {length} 字节，实际 {bytesRead}");
 
                     var content = Encoding.UTF8.GetString(buf, 0, bytesRead);
                     contents.Add(new LineContent(
@@ -331,28 +333,24 @@ internal class FileAccessor : IDisposable
     /// <param name="replacement">替换内容</param>
     public async Task<bool> ReplaceBytes(long byteOffset, long byteCount, ReadOnlyMemory<byte> replacement)
     {
-        if (byteOffset < 0 || byteOffset > file.Length)
-            throw new ArgumentOutOfRangeException(nameof(byteOffset), $"字节偏移 {byteOffset} 超出范围 [0, {file.Length}]");
+        if (byteOffset < 0 || byteOffset > _file.Length)
+            throw new ArgumentOutOfRangeException(nameof(byteOffset), $"字节偏移 {byteOffset} 超出范围 [0, {_file.Length}]");
 
         if (byteCount < 0)
             throw new ArgumentOutOfRangeException(nameof(byteCount), "字节数量不能小于 0");
 
-        if (byteCount > file.Length - byteOffset)
+        if (byteCount > _file.Length - byteOffset)
             throw new ArgumentOutOfRangeException(nameof(byteCount), $"字节数量 {byteCount} 超出范围，无法从偏移 {byteOffset} 开始替换");
 
         if (byteCount == 0 && replacement.Length == 0)
             return true;
 
         if (byteCount == replacement.Length)
-        {
-            await overwriteBytesInPlaceAsync(byteOffset, replacement);
-        }
+            await OverwriteBytesInPlaceAsync(byteOffset, replacement);
         else
-        {
-            await rewriteFileWithSegmentAsync(byteOffset, byteCount, replacement);
-        }
+            await RewriteFileWithSegmentAsync(byteOffset, byteCount, replacement);
 
-        buildIndex();
+        BuildIndex();
         return true;
     }
 
@@ -360,27 +358,33 @@ internal class FileAccessor : IDisposable
     /// 删除指定字节段。
     /// </summary>
     public Task<bool> DeleteBytes(long byteOffset, long byteCount)
-        => ReplaceBytes(byteOffset, byteCount, ReadOnlyMemory<byte>.Empty);
+    {
+        return ReplaceBytes(byteOffset, byteCount, ReadOnlyMemory<byte>.Empty);
+    }
 
     /// <summary>
     /// 在指定字节偏移插入内容。
     /// </summary>
     public Task<bool> InsertBytes(long byteOffset, ReadOnlyMemory<byte> insertion)
-        => ReplaceBytes(byteOffset, 0, insertion);
+    {
+        return ReplaceBytes(byteOffset, 0, insertion);
+    }
 
     /// <summary>
     /// 删除单行。
     /// </summary>
     public Task<bool> DeleteLine(int lineNumber)
-        => DeleteLines(lineNumber, lineNumber);
+    {
+        return DeleteLines(lineNumber, lineNumber);
+    }
 
     /// <summary>
     /// 删除连续多行。
     /// </summary>
     public Task<bool> DeleteLines(int startLine, int endLine)
     {
-        var startSpan = getLineSpanOrThrow(startLine);
-        var endSpan = getLineSpanOrThrow(endLine);
+        var startSpan = GetLineSpanOrThrow(startLine);
+        var endSpan = GetLineSpanOrThrow(endLine);
 
         if (startLine > endLine)
             throw new ArgumentException($"起始行号 {startLine} 不能大于结束行号 {endLine}");
@@ -392,48 +396,60 @@ internal class FileAccessor : IDisposable
     /// 在指定行后插入字节。
     /// </summary>
     public Task<bool> InsertBytesAfterLine(int lineNumber, ReadOnlyMemory<byte> insertion)
-        => InsertBytes(getLineSpanOrThrow(lineNumber).NextStart, insertion);
+    {
+        return InsertBytes(GetLineSpanOrThrow(lineNumber).NextStart, insertion);
+    }
 
     /// <summary>
     /// 在指定行前插入字节。
     /// </summary>
     public Task<bool> InsertBytesBeforeLine(int lineNumber, ReadOnlyMemory<byte> insertion)
-        => InsertBytes(getLineSpanOrThrow(lineNumber).LineStart, insertion);
+    {
+        return InsertBytes(GetLineSpanOrThrow(lineNumber).LineStart, insertion);
+    }
 
     /// <summary>
     /// 在指定行后插入若干行。
     /// </summary>
     public Task<bool> InsertLinesAfterLine(int lineNumber, IReadOnlyList<string> lines)
-        => InsertBytesAfterLine(lineNumber, encodeLinesToUtf8Bytes(lines, true));
+    {
+        return InsertBytesAfterLine(lineNumber, EncodeLinesToUtf8Bytes(lines, true));
+    }
 
     /// <summary>
     /// 在指定行前插入若干行。
     /// </summary>
     public Task<bool> InsertLinesBeforeLine(int lineNumber, IReadOnlyList<string> lines)
-        => InsertBytesBeforeLine(lineNumber, encodeLinesToUtf8Bytes(lines, true));
+    {
+        return InsertBytesBeforeLine(lineNumber, EncodeLinesToUtf8Bytes(lines, true));
+    }
 
     /// <summary>
     /// 在两行之间插入字节。
     /// </summary>
     public Task<bool> InsertBytesBetweenLines(int upperLineNumber, int lowerLineNumber, ReadOnlyMemory<byte> insertion)
     {
-        if (upperLineNumber < 0 || upperLineNumber >= index.Count)
-            throw new ArgumentOutOfRangeException(nameof(upperLineNumber), $"行号 {upperLineNumber} 超出范围 [0, {index.Count})");
+        if (upperLineNumber < 0 || upperLineNumber >= _index.Count)
+            throw new ArgumentOutOfRangeException(nameof(upperLineNumber),
+                $"行号 {upperLineNumber} 超出范围 [0, {_index.Count})");
 
-        if (lowerLineNumber < 0 || lowerLineNumber >= index.Count)
-            throw new ArgumentOutOfRangeException(nameof(lowerLineNumber), $"行号 {lowerLineNumber} 超出范围 [0, {index.Count})");
+        if (lowerLineNumber < 0 || lowerLineNumber >= _index.Count)
+            throw new ArgumentOutOfRangeException(nameof(lowerLineNumber),
+                $"行号 {lowerLineNumber} 超出范围 [0, {_index.Count})");
 
         if (upperLineNumber >= lowerLineNumber)
             throw new ArgumentException($"上边行号 {upperLineNumber} 必须小于下边行号 {lowerLineNumber}");
 
-        return InsertBytes(index[upperLineNumber].NextStart, insertion);
+        return InsertBytes(_index[upperLineNumber].NextStart, insertion);
     }
 
     /// <summary>
     /// 在两行之间插入若干行。
     /// </summary>
     public Task<bool> InsertLinesBetweenLines(int upperLineNumber, int lowerLineNumber, IReadOnlyList<string> lines)
-        => InsertBytesBetweenLines(upperLineNumber, lowerLineNumber, encodeLinesToUtf8Bytes(lines, true));
+    {
+        return InsertBytesBetweenLines(upperLineNumber, lowerLineNumber, EncodeLinesToUtf8Bytes(lines, true));
+    }
 
     /// <summary>
     /// 替换单个连续范围的行（写入后全量重建索引）
@@ -445,11 +461,11 @@ internal class FileAccessor : IDisposable
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        if (startLine < 0 || startLine >= index.Count)
-            throw new ArgumentOutOfRangeException(nameof(startLine), $"起始行号 {startLine} 超出范围 [0, {index.Count})");
+        if (startLine < 0 || startLine >= _index.Count)
+            throw new ArgumentOutOfRangeException(nameof(startLine), $"起始行号 {startLine} 超出范围 [0, {_index.Count})");
 
-        if (endLine < 0 || endLine >= index.Count)
-            throw new ArgumentOutOfRangeException(nameof(endLine), $"结束行号 {endLine} 超出范围 [0, {index.Count})");
+        if (endLine < 0 || endLine >= _index.Count)
+            throw new ArgumentOutOfRangeException(nameof(endLine), $"结束行号 {endLine} 超出范围 [0, {_index.Count})");
 
         if (startLine > endLine)
             throw new ArgumentException($"起始行号 {startLine} 不能大于结束行号 {endLine}");
@@ -465,29 +481,30 @@ internal class FileAccessor : IDisposable
                 throw new ArgumentException($"内容行 {startLine + i} 包含换行符", nameof(content));
         }
 
-        var startSpan = index[startLine];
-        var endSpan = index[endLine];
-        var replacementBytes = encodeLinesToUtf8Bytes(content, endSpan.NextStart > endSpan.LineEnd);
+        var startSpan = _index[startLine];
+        var endSpan = _index[endLine];
+        var replacementBytes = EncodeLinesToUtf8Bytes(content, endSpan.NextStart > endSpan.LineEnd);
 
         return await ReplaceBytes(startSpan.LineStart, endSpan.NextStart - startSpan.LineStart, replacementBytes);
     }
 
-    private LineSpan getLineSpanOrThrow(int lineNumber)
+    private LineSpan
+        GetLineSpanOrThrow(int lineNumber)
     {
-        if (lineNumber < 0 || lineNumber >= index.Count)
-            throw new ArgumentOutOfRangeException(nameof(lineNumber), $"行号 {lineNumber} 超出范围 [0, {index.Count})");
+        if (lineNumber < 0 || lineNumber >= _index.Count)
+            throw new ArgumentOutOfRangeException(nameof(lineNumber), $"行号 {lineNumber} 超出范围 [0, {_index.Count})");
 
-        return index[lineNumber];
+        return _index[lineNumber];
     }
 
-    private static ReadOnlyMemory<byte> encodeLinesToUtf8Bytes(IReadOnlyList<string> lines, bool trailingNewline)
+    private static ReadOnlyMemory<byte> EncodeLinesToUtf8Bytes(IReadOnlyList<string> lines, bool trailingNewline)
     {
         ArgumentNullException.ThrowIfNull(lines);
         if (lines.Count == 0)
             return ReadOnlyMemory<byte>.Empty;
 
         using var memoryStream = new MemoryStream();
-        using (var writer = new StreamWriter(memoryStream, utf8_no_bom, stream_buffer_size, leaveOpen: true))
+        using (var writer = new StreamWriter(memoryStream, Utf8NoBom, StreamBufferSize, true))
         {
             for (var i = 0; i < lines.Count; i++)
             {
@@ -510,40 +527,42 @@ internal class FileAccessor : IDisposable
         return memoryStream.ToArray();
     }
 
-    private async Task overwriteBytesInPlaceAsync(long offset, ReadOnlyMemory<byte> replacement)
+    private async Task OverwriteBytesInPlaceAsync(long offset, ReadOnlyMemory<byte> replacement)
     {
         if (replacement.Length == 0)
             return;
 
-        file.Seek(offset, SeekOrigin.Begin);
-        await file.WriteAsync(replacement, CancellationToken.None);
-        await file.FlushAsync(CancellationToken.None);
-        file.Seek(0, SeekOrigin.Begin);
+        _file.Seek(offset, SeekOrigin.Begin);
+        await _file.WriteAsync(replacement, CancellationToken.None);
+        await _file.FlushAsync(CancellationToken.None);
+        _file.Seek(0, SeekOrigin.Begin);
     }
 
-    private async Task rewriteFileWithSegmentAsync(long removeOffset, long removeLength, ReadOnlyMemory<byte> replacement)
+    private async Task RewriteFileWithSegmentAsync(long removeOffset, long removeLength,
+        ReadOnlyMemory<byte> replacement)
     {
-        var originalLength = file.Length;
-        var tempPath = getTempPath();
+        var originalLength = _file.Length;
+        var tempPath = GetTempPath();
 
         try
         {
             await using (var tempOutput = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                stream_buffer_size, FileOptions.SequentialScan))
+                             StreamBufferSize, FileOptions.SequentialScan))
             {
-                await copyRangeToStreamAsync(tempOutput, 0, removeOffset);
+                await CopyRangeToStreamAsync(tempOutput, 0, removeOffset);
                 if (!replacement.IsEmpty)
                     await tempOutput.WriteAsync(replacement, CancellationToken.None);
-                await copyRangeToStreamAsync(tempOutput, removeOffset + removeLength, originalLength - (removeOffset + removeLength));
+                await CopyRangeToStreamAsync(tempOutput, removeOffset + removeLength,
+                    originalLength - (removeOffset + removeLength));
                 await tempOutput.FlushAsync();
             }
 
-            file.SetLength(0);
-            file.Seek(0, SeekOrigin.Begin);
+            _file.SetLength(0);
+            _file.Seek(0, SeekOrigin.Begin);
             await using var tempInput = new FileStream(tempPath, FileMode.Open, FileAccess.Read, FileShare.Read,
-                stream_buffer_size, FileOptions.SequentialScan);
-            await tempInput.CopyToAsync(file, stream_buffer_size, CancellationToken.None);
-            await file.FlushAsync(CancellationToken.None);
+                StreamBufferSize, FileOptions.SequentialScan);
+            await tempInput.CopyToAsync(_file, StreamBufferSize, CancellationToken.None);
+            await _file.FlushAsync(CancellationToken.None);
         }
         finally
         {
@@ -554,19 +573,19 @@ internal class FileAccessor : IDisposable
             }
             catch (IOException ex)
             {
-                logger.Warn(ex, $"删除临时文件 {tempPath} 失败");
+                Logger.Warn(ex, $"删除临时文件 {tempPath} 失败");
             }
 
-            file.Seek(0, SeekOrigin.Begin);
+            _file.Seek(0, SeekOrigin.Begin);
         }
     }
 
-    private async Task copyRangeToStreamAsync(Stream destination, long sourceOffset, long length)
+    private async Task CopyRangeToStreamAsync(Stream destination, long sourceOffset, long length)
     {
         if (length <= 0)
             return;
 
-        var buffer = ArrayPool<byte>.Shared.Rent(stream_buffer_size);
+        var buffer = ArrayPool<byte>.Shared.Rent(StreamBufferSize);
         try
         {
             var currentOffset = sourceOffset;
@@ -575,7 +594,8 @@ internal class FileAccessor : IDisposable
             while (remaining > 0)
             {
                 var chunk = (int)Math.Min(buffer.Length, remaining);
-                var bytesRead = await RandomAccess.ReadAsync(handle, buffer.AsMemory(0, chunk), currentOffset, CancellationToken.None);
+                var bytesRead = await RandomAccess.ReadAsync(_handle, buffer.AsMemory(0, chunk), currentOffset,
+                    CancellationToken.None);
                 if (bytesRead == 0)
                     break;
 
@@ -592,6 +612,6 @@ internal class FileAccessor : IDisposable
 
     public void Dispose()
     {
-        file.Dispose();
+        _file.Dispose();
     }
 }

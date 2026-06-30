@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 
 namespace TinadecTools.Abstractions;
 
@@ -23,6 +24,37 @@ internal static class ToolRegistry
     {
         ArgumentNullException.ThrowIfNull(handler);
         Register(handler.ToolId, handler.HandleAsync);
+    }
+
+    public static void Register<TArgs, TResult>(
+        string toolId,
+        Func<TArgs, CancellationToken, ValueTask<TResult>> handler,
+        JsonTypeInfo<TArgs> argsTypeInfo,
+        JsonTypeInfo<TResult> resultTypeInfo)
+        where TArgs : notnull
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(toolId);
+        ArgumentNullException.ThrowIfNull(handler);
+        ArgumentNullException.ThrowIfNull(argsTypeInfo);
+        ArgumentNullException.ThrowIfNull(resultTypeInfo);
+
+        Register(toolId, async (request, cancellationToken) =>
+        {
+            if (request.Params.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                throw new InvalidOperationException($"Tool '{request.ToolId}' requires params.");
+
+            var args = JsonSerializer.Deserialize(request.Params, argsTypeInfo)
+                       ?? throw new InvalidOperationException($"Tool '{request.ToolId}' params could not be parsed.");
+
+            var result = await handler(args, cancellationToken).ConfigureAwait(false);
+
+            return new ToolCallResponse<JsonElement>
+            {
+                CallId = request.ToolCallId,
+                IsSuccess = true,
+                Response = JsonSerializer.SerializeToElement(result, resultTypeInfo)
+            };
+        });
     }
 
     public static bool TryResolve(string toolId, out ToolHandlerDelegate handler)

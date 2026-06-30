@@ -10,13 +10,13 @@ namespace TinadecTools.Tools.FileRW;
 /// </summary>
 internal static class FileHashing
 {
-    private const string nibble_string = "ZPMQVRWSNKTXJBYH";
+    private const string NibbleString = "ZPMQVRWSNKTXJBYH";
 
-    private static string getHashLineDict(int index)
+    private static string GetHashLineDict(int index)
     {
         var high = index >> 4;
         var low = index & 0x0F;
-        return nibble_string[high].ToString() + nibble_string[low];
+        return NibbleString[high].ToString() + NibbleString[low];
     }
 
     /// <summary>
@@ -40,7 +40,9 @@ internal static class FileHashing
 
         Debug.Assert(linenumber != null, nameof(linenumber) + " != null");
         var seed = match ? 0 : linenumber.Value;
-        var hash = (int)XxHash32.HashToUInt32(Encoding.UTF8.GetBytes(line), seed);
-        return getHashLineDict(hash % 256);
+        //实验性功能，如果不成就回退到原版
+        var hash = XxHash32.HashToUInt32(Encoding.UTF8.GetBytes(line), linenumber.GetValueOrDefault(0));
+        // var hash = (int)XxHash32.HashToUInt32(Encoding.UTF8.GetBytes(line), seed);
+        return GetHashLineDict((int)(hash & 0xFF));
     }
 }
