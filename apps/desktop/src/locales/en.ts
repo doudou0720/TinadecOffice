@@ -483,9 +483,11 @@ retry: 'Retry',
     preview: 'Preview',
     reset: 'Reset',
     resetBackground: 'Reset Background',
-    resetPanelStyles: 'Reset Panel Styles',
+    resetPanelStyles: 'Reset Material Style',
     
-    // Panel style settings
+    // Panel style settings (global material effect)
+    globalMaterial: 'Global Material Effect',
+    globalMaterialHint: 'Set a unified material effect for all panels including sidebar, chat area, and context panel',
     panelStyles: 'Panel Styles',
     panelStylesHint: 'Customize opacity and visual effects for each panel',
     sidebar: 'Sidebar',

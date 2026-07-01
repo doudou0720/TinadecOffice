@@ -323,8 +323,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="shell">
-    <AppHeader :busy="busy || loading" />
+<main class="shell">
+<!-- Full-width draggable bar for window dragging -->
+<div class="top-drag-bar" />
+<AppHeader :busy="busy || loading" />
     <section v-if="error" class="error-strip">{{ error }}</section>
 
     <section class="market-workspace">

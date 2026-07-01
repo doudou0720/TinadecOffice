@@ -4,7 +4,7 @@
  */
 
 import { useStorage } from '@vueuse/core'
-import { ref, watch, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import {
   type BackgroundSettings,
   type BackgroundType,
@@ -27,29 +27,48 @@ function getStoredBackground(): Ref<BackgroundSettings> {
 }
 
 /**
- * Apply background settings to DOM
+ * Normalize a file source path to a valid URL for CSS and HTML use.
+ *
+ * Windows paths returned by Electron dialog (e.g. `C:\Users\image.jpg`)
+ * contain backslashes which are CSS escape characters in `url()`.
+ * This function converts them to `file:///` URLs so they work correctly
+ * in CSS `url()`, `<img src>`, and `<video src>`.
+ *
+ * - Already-URL strings (http://, https://, file://, data:) are returned as-is.
+ * - Unix absolute paths (/home/...) are converted to file:// URLs.
+ * - Windows drive-letter paths (C:\...) are converted to file:/// URLs.
  */
-function applyBackgroundToDOM(settings: BackgroundSettings): void {
-  const root = document.documentElement
-  
-  // Set background type attribute
-  root.setAttribute('data-bg-type', settings.type)
-  
-  // Set background opacity and blur as CSS variables
-  root.style.setProperty('--bg-custom-opacity', `${settings.opacity / 100}`)
-  root.style.setProperty('--bg-custom-blur', `${settings.blur}px`)
-  
-  // Set background size, position, and repeat
-  root.style.setProperty('--bg-custom-size', settings.size)
-  root.style.setProperty('--bg-custom-position', settings.position)
-  root.style.setProperty('--bg-custom-repeat', settings.repeat)
-  
-  // Set background source if applicable
-  if (settings.type !== 'none' && settings.source) {
-    root.style.setProperty('--bg-custom-source', `url('${settings.source}')`)
-  } else {
-    root.style.removeProperty('--bg-custom-source')
+export function normalizeFileSource(source: string): string {
+  if (!source) return source
+
+  const trimmed = source.trim()
+
+  // Already a URL — return as-is
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('blob:')
+  ) {
+    return trimmed
   }
+
+  // Windows drive-letter path (e.g. C:\Users\..., D:/photos/img.png)
+  if (/^[a-zA-Z]:[\\/]/.test(trimmed)) {
+    // Convert backslashes to forward slashes, then encode for file:// URL
+    const forwardSlashes = trimmed.replace(/\\/g, '/')
+    // file:///C:/Users/image.jpg
+    return `file:///${forwardSlashes}`
+  }
+
+  // Unix absolute path
+  if (trimmed.startsWith('/')) {
+    return `file://${trimmed}`
+  }
+
+  // Relative path or anything else — return as-is (may work in dev server context)
+  return trimmed
 }
 
 /**
@@ -62,7 +81,7 @@ async function selectBackgroundFile(type: BackgroundType): Promise<string | null
     console.warn('Electron file dialog API not available')
     return null
   }
-  
+
   try {
     const result = await tinadec.selectBackgroundFile(type)
     return result || null
@@ -75,16 +94,20 @@ async function selectBackgroundFile(type: BackgroundType): Promise<string | null
 export function useBackground() {
   const backgroundSettings = getStoredBackground()
   const isApplying = ref(false)
-  
+
   /**
-   * Apply current background settings to DOM
+   * Apply current background settings to DOM.
+   * Sets a data attribute on the root element for CSS targeting.
+   * The actual visual rendering is handled by the template in HomePage.vue
+   * using reactive inline styles.
    */
   function applyBackground(): void {
     isApplying.value = true
-    applyBackgroundToDOM(backgroundSettings.value)
+    const root = document.documentElement
+    root.setAttribute('data-bg-type', backgroundSettings.value.type)
     isApplying.value = false
   }
-  
+
   /**
    * Update background type
    */
@@ -96,17 +119,20 @@ export function useBackground() {
       source: type === 'none' ? '' : backgroundSettings.value.source,
     }
   }
-  
+
   /**
-   * Update background source (URL or file path)
+   * Update background source (URL or file path).
+   * Automatically normalizes Windows file paths to file:/// URLs.
+   * For HTML backgrounds, the source is raw HTML content and is not normalized.
    */
   function setBackgroundSource(source: string): void {
+    const currentType = backgroundSettings.value.type
     backgroundSettings.value = {
       ...backgroundSettings.value,
-      source,
+      source: currentType === 'html' ? source : normalizeFileSource(source),
     }
   }
-  
+
   /**
    * Update background opacity (0-100)
    */
@@ -116,7 +142,7 @@ export function useBackground() {
       opacity: Math.max(0, Math.min(100, opacity)),
     }
   }
-  
+
   /**
    * Update background blur (0-20px)
    */
@@ -126,7 +152,7 @@ export function useBackground() {
       blur: Math.max(0, Math.min(20, blur)),
     }
   }
-  
+
   /**
    * Update background size
    */
@@ -136,7 +162,7 @@ export function useBackground() {
       size,
     }
   }
-  
+
   /**
    * Update background position
    */
@@ -146,7 +172,7 @@ export function useBackground() {
       position,
     }
   }
-  
+
   /**
    * Update background repeat
    */
@@ -156,43 +182,35 @@ export function useBackground() {
       repeat,
     }
   }
-  
+
   /**
-   * Select file and update source
+   * Select file and update source.
+   * Uses Electron dialog to pick a local file, then normalizes the path.
    */
   async function selectFile(): Promise<void> {
     const type = backgroundSettings.value.type
     if (type === 'none' || type === 'html') {
       return
     }
-    
+
     const filePath = await selectBackgroundFile(type)
     if (filePath) {
       setBackgroundSource(filePath)
     }
   }
-  
+
   /**
    * Reset background to default settings
    */
   function resetBackground(): void {
     backgroundSettings.value = { ...DEFAULT_BACKGROUND_SETTINGS }
   }
-  
-  // Watch for settings changes and apply to DOM
-  watch(
-    backgroundSettings,
-    () => {
-      applyBackground()
-    },
-    { deep: true, immediate: true }
-  )
-  
+
   return {
     // State
     settings: backgroundSettings,
     isApplying,
-    
+
     // Methods
     applyBackground,
     setBackgroundType,

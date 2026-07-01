@@ -483,9 +483,11 @@ retry: '重试',
     preview: '预览',
     reset: '重置',
     resetBackground: '重置背景',
-    resetPanelStyles: '重置面板样式',
+    resetPanelStyles: '重置材质样式',
     
-    // Panel style settings
+    // Panel style settings (global material effect)
+    globalMaterial: '全局材质效果',
+    globalMaterialHint: '统一设置所有面板的材质效果，包括侧边栏、对话区和上下文面板',
     panelStyles: '面板样式',
     panelStylesHint: '自定义各面板的透明度和视觉效果',
     sidebar: '侧边栏',

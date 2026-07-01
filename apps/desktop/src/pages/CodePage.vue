@@ -166,8 +166,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="shell">
-    <AppHeader :busy="busy" />
+<main class="shell">
+<!-- Full-width draggable bar for window dragging -->
+<div class="top-drag-bar" />
+<AppHeader :busy="busy" />
 
     <section v-if="error" class="error-strip">{{ error }}</section>
 

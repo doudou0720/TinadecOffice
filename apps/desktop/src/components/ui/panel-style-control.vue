@@ -1,12 +1,15 @@
 /**
- * Panel style control component
- * Provides UI for adjusting panel opacity, blur, and effect type
+ * Panel style control component — simplified to three material effects.
+ *
+ * - Opaque:      Solid background, no parameters
+ * - Translucent: Adjustable opacity (0-100%)
+ * - Blur:        Adjustable opacity (0-100%) and blur strength (0-20px)
  */
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { PanelStyleSettings } from '@/types/background'
+import type { PanelEffect, PanelStyleSettings } from '@/types/background'
 
 const { t } = useI18n()
 
@@ -19,64 +22,62 @@ const emit = defineEmits<{
   update: [settings: Partial<PanelStyleSettings>]
 }>()
 
-// Effect options
+// Effect options — only three
 const effectOptions = computed(() => [
-  { value: 'opaque', label: t('settings.effectOpaque') },
-  { value: 'translucent', label: t('settings.effectTranslucent') },
-  { value: 'blur', label: t('settings.effectBlur') },
+  { value: 'opaque' as PanelEffect, label: t('settings.effectOpaque') },
+  { value: 'translucent' as PanelEffect, label: t('settings.effectTranslucent') },
+  { value: 'blur' as PanelEffect, label: t('settings.effectBlur') },
 ])
 
-// Update effect type
-function setEffect(effect: 'opaque' | 'translucent' | 'blur'): void {
-  emit('update', { effect })
-}
+// Whether to show the opacity slider
+const showOpacity = computed(() =>
+  props.settings.effect === 'translucent' || props.settings.effect === 'blur'
+)
 
-// Update opacity
-function setOpacity(event: Event): void {
-  const target = event.target as HTMLInputElement
-  emit('update', { opacity: parseInt(target.value) })
-}
+// Whether to show the blur slider
+const showBlur = computed(() => props.settings.effect === 'blur')
 
-// Update blur
-function setBlur(event: Event): void {
-  const target = event.target as HTMLInputElement
-  emit('update', { blur: parseInt(target.value) })
-}
-
-// Compute preview style
+// Preview style — mirrors computePanelStyle logic for real-time feedback
 const previewStyle = computed(() => {
   const style: Record<string, string> = {
-    height: '60px',
+    height: '56px',
     borderRadius: '6px',
     border: '1px solid var(--border-default)',
-    background: 'var(--bg-primary)',
     transition: 'all 0.2s ease',
   }
-  
+  const alpha = props.settings.opacity / 100
+
   switch (props.settings.effect) {
     case 'opaque':
+      style.background = 'var(--bg-primary)'
       break
     case 'translucent':
-      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${props.settings.opacity / 100})`
+      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
     case 'blur':
       style.backdropFilter = `blur(${props.settings.blur}px)`
-      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), 0.8)`
+      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
   }
-  
+
   return style
 })
 
-// Check if opacity slider should be shown
-const showOpacitySlider = computed(() => {
-  return props.settings.effect === 'translucent'
-})
+function setEffect(effect: PanelEffect): void {
+  emit('update', { effect })
+}
 
-// Check if blur slider should be shown
-const showBlurSlider = computed(() => {
-  return props.settings.effect === 'blur'
-})
+function setOpacity(event: Event): void {
+  emit('update', { opacity: parseInt((event.target as HTMLInputElement).value) })
+}
+
+function setBlur(event: Event): void {
+  emit('update', { blur: parseInt((event.target as HTMLInputElement).value) })
+}
+
+function reset(): void {
+  emit('update', { effect: 'opaque', opacity: 80, blur: 8 })
+}
 </script>
 
 <template>
@@ -84,32 +85,28 @@ const showBlurSlider = computed(() => {
     <!-- Header -->
     <div class="control-header">
       <span class="control-label">{{ label }}</span>
-      <button
-        class="control-reset"
-        :title="t('settings.reset')"
-        @click="emit('update', { opacity: 100, blur: 0, effect: 'opaque' })"
-      >
+      <button class="control-reset" :title="t('settings.reset')" @click="reset">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
           <path d="M3 3v5h5" />
         </svg>
       </button>
     </div>
-    
-    <!-- Effect selector -->
+
+    <!-- Effect selector — three buttons -->
     <div class="effect-selector">
       <button
         v-for="option in effectOptions"
         :key="option.value"
         :class="['effect-option', { active: settings.effect === option.value }]"
-        @click="setEffect(option.value as any)"
+        @click="setEffect(option.value)"
       >
         {{ option.label }}
       </button>
     </div>
-    
-    <!-- Opacity slider (for translucent effect) -->
-    <div v-if="showOpacitySlider" class="slider-row">
+
+    <!-- Opacity slider (translucent + blur) -->
+    <div v-if="showOpacity" class="slider-row">
       <label class="slider-label">{{ t('settings.opacity') }}</label>
       <input
         type="range"
@@ -121,9 +118,9 @@ const showBlurSlider = computed(() => {
       />
       <span class="slider-value">{{ settings.opacity }}%</span>
     </div>
-    
-    <!-- Blur slider (for blur effect) -->
-    <div v-if="showBlurSlider" class="slider-row">
+
+    <!-- Blur slider (blur only) -->
+    <div v-if="showBlur" class="slider-row">
       <label class="slider-label">{{ t('settings.blur') }}</label>
       <input
         type="range"
@@ -135,12 +132,10 @@ const showBlurSlider = computed(() => {
       />
       <span class="slider-value">{{ settings.blur }}px</span>
     </div>
-    
+
     <!-- Preview -->
     <div class="preview-container">
-      <div class="preview-background">
-        <div class="preview-pattern" />
-      </div>
+      <div class="preview-pattern" />
       <div :style="previewStyle" class="preview-panel">
         <span class="preview-text">{{ t('settings.preview') }}</span>
       </div>
@@ -160,7 +155,7 @@ const showBlurSlider = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .control-label {
@@ -191,12 +186,12 @@ const showBlurSlider = computed(() => {
 .effect-selector {
   display: flex;
   gap: 4px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .effect-option {
   flex: 1;
-  padding: 6px 8px;
+  padding: 6px 4px;
   font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary);
@@ -226,7 +221,7 @@ const showBlurSlider = computed(() => {
 }
 
 .slider-label {
-  min-width: 60px;
+  min-width: 50px;
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -256,7 +251,7 @@ const showBlurSlider = computed(() => {
 }
 
 .slider-value {
-  min-width: 40px;
+  min-width: 36px;
   font-size: 12px;
   color: var(--text-muted);
   text-align: right;
@@ -264,24 +259,19 @@ const showBlurSlider = computed(() => {
 
 .preview-container {
   position: relative;
-  height: 60px;
-  margin-top: 12px;
+  height: 56px;
+  margin-top: 10px;
   border-radius: 6px;
   overflow: hidden;
 }
 
-.preview-background {
+.preview-pattern {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-}
-
-.preview-pattern {
-  width: 100%;
-  height: 100%;
-  background: 
+  background:
     repeating-linear-gradient(
       45deg,
       var(--accent-soft),

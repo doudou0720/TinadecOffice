@@ -1,241 +1,130 @@
 /**
- * Panel styles management composable for TinadecOffice Desktop
- * Handles panel opacity, blur effects, and visual styling
+ * Panel styles management composable for TinadecOffice Desktop.
+ *
+ * Simplified to a single global material effect: opaque, translucent, blur.
+ * The same global setting is applied to all panels (sidebar, chat, context, settings nav).
+ *
+ * Style application is done via Vue reactive :style bindings
+ * (getPanelStyle) — no direct DOM manipulation needed.
  */
 
 import { useStorage } from '@vueuse/core'
-import { ref, watch, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import {
+  type PanelEffect,
   type PanelStyleSettings,
   DEFAULT_PANEL_STYLE_SETTINGS,
 } from '../types/background'
 
-// Storage key for panel styles
-const STORAGE_KEY = 'tinadec-panel-styles'
-
-export interface PanelStylesState {
-  sidebar: PanelStyleSettings
-  chatPanel: PanelStyleSettings
-  contextPanel: PanelStyleSettings
-}
-
-const DEFAULT_PANEL_STYLES: PanelStylesState = {
-  sidebar: { ...DEFAULT_PANEL_STYLE_SETTINGS },
-  chatPanel: { ...DEFAULT_PANEL_STYLE_SETTINGS },
-  contextPanel: { ...DEFAULT_PANEL_STYLE_SETTINGS },
-}
+// Storage key for the global panel style
+const STORAGE_KEY = 'tinadec-panel-style'
 
 /**
- * Get stored panel styles reference (lazy initialization)
+ * Get stored global panel style reference (lazy singleton initialization)
  */
-let stored: Ref<PanelStylesState> | null = null
+let stored: Ref<PanelStyleSettings> | null = null
 
-function getStoredPanelStyles(): Ref<PanelStylesState> {
+function getStoredPanelStyle(): Ref<PanelStyleSettings> {
   if (!stored) {
-    stored = useStorage<PanelStylesState>(STORAGE_KEY, { ...DEFAULT_PANEL_STYLES })
+    stored = useStorage<PanelStyleSettings>(STORAGE_KEY, { ...DEFAULT_PANEL_STYLE_SETTINGS })
   }
   return stored
 }
 
 /**
- * Apply panel style settings to DOM element
+ * Clamp a number to the given range.
  */
-function applyPanelStyleToElement(
-  element: HTMLElement,
-  settings: PanelStyleSettings,
-  panelName: string
-): void {
-  // Set data attributes for CSS targeting
-  element.setAttribute('data-panel-effect', settings.effect)
-  
-  // Set CSS custom properties
-  element.style.setProperty(`--panel-${panelName}-opacity`, `${settings.opacity / 100}`)
-  element.style.setProperty(`--panel-${panelName}-blur`, `${settings.blur}px`)
-  
-  // Apply effect-specific styles
-  switch (settings.effect) {
-    case 'opaque':
-      element.style.backdropFilter = 'none'
-      element.style.backgroundColor = ''
-      break
-    case 'translucent':
-      element.style.backdropFilter = 'none'
-      element.style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${settings.opacity / 100})`
-      break
-    case 'blur':
-      element.style.backdropFilter = `blur(${settings.blur}px)`
-      element.style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), 0.8)`
-      break
-  }
+function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val))
 }
 
 /**
- * Compute panel style for Vue component binding
+ * Compute inline CSS style object based on the global effect settings.
+ *
+ * - opaque:      No special styling (solid background from CSS)
+ * - translucent: Semi-transparent background using rgba() with configured opacity
+ * - blur:        Frosted glass: backdrop-filter blur + semi-transparent background
  */
-function computePanelStyle(settings: PanelStyleSettings): Record<string, string> {
+export function computePanelStyle(settings: PanelStyleSettings): Record<string, string> {
   const style: Record<string, string> = {}
-  
+  const alpha = clamp(settings.opacity, 0, 100) / 100
+
   switch (settings.effect) {
     case 'opaque':
-      // Default styling, no special effects
+      // Solid background — no inline overrides needed
       break
     case 'translucent':
-      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${settings.opacity / 100})`
+      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
     case 'blur':
-      style.backdropFilter = `blur(${settings.blur}px)`
-      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), 0.8)`
+      style.backdropFilter = `blur(${clamp(settings.blur, 0, 20)}px)`
+      style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
   }
-  
+
   return style
 }
 
 export function usePanelStyles() {
-  const panelStyles = getStoredPanelStyles()
+  const panelStyle = getStoredPanelStyle()
   const isApplying = ref(false)
-  
+
   /**
-   * Update sidebar panel style
+   * Update the global material style settings (partial merge)
    */
-  function updateSidebarStyle(settings: Partial<PanelStyleSettings>): void {
-    panelStyles.value = {
-      ...panelStyles.value,
-      sidebar: {
-        ...panelStyles.value.sidebar,
-        ...settings,
-      },
+  function updatePanelStyle(patch: Partial<PanelStyleSettings>): void {
+    panelStyle.value = {
+      ...panelStyle.value,
+      ...patch,
+      // Clamp numeric values
+      opacity: patch.opacity !== undefined ? clamp(patch.opacity, 0, 100) : panelStyle.value.opacity,
+      blur: patch.blur !== undefined ? clamp(patch.blur, 0, 20) : panelStyle.value.blur,
     }
   }
-  
+
   /**
-   * Update chat panel style
+   * Set the global effect type.
+   * Preserves existing opacity/blur values so switching back restores them.
    */
-  function updateChatPanelStyle(settings: Partial<PanelStyleSettings>): void {
-    panelStyles.value = {
-      ...panelStyles.value,
-      chatPanel: {
-        ...panelStyles.value.chatPanel,
-        ...settings,
-      },
-    }
+  function setPanelEffect(effect: PanelEffect): void {
+    updatePanelStyle({ effect })
   }
-  
+
   /**
-   * Update context panel style
+   * Reset the global material style to defaults
    */
-  function updateContextPanelStyle(settings: Partial<PanelStyleSettings>): void {
-    panelStyles.value = {
-      ...panelStyles.value,
-      contextPanel: {
-        ...panelStyles.value.contextPanel,
-        ...settings,
-      },
-    }
+  function resetPanelStyle(): void {
+    panelStyle.value = { ...DEFAULT_PANEL_STYLE_SETTINGS }
   }
-  
+
   /**
-   * Update panel style by name
+   * Get computed inline style for a panel (for Vue :style binding).
+   * All panels share the same global material setting.
    */
-  function updatePanelStyle(
-    panelName: 'sidebar' | 'chatPanel' | 'contextPanel',
-    settings: Partial<PanelStyleSettings>
-  ): void {
-    switch (panelName) {
-      case 'sidebar':
-        updateSidebarStyle(settings)
-        break
-      case 'chatPanel':
-        updateChatPanelStyle(settings)
-        break
-      case 'contextPanel':
-        updateContextPanelStyle(settings)
-        break
-    }
+  function getPanelStyle(_panelName?: string): Record<string, string> {
+    return computePanelStyle(panelStyle.value)
   }
-  
+
   /**
-   * Reset all panel styles to default
+   * Get data attributes for CSS targeting.
+   * All panels share the same global material setting.
    */
-  function resetAllPanelStyles(): void {
-    panelStyles.value = { ...DEFAULT_PANEL_STYLES }
-  }
-  
-  /**
-   * Reset specific panel style to default
-   */
-  function resetPanelStyle(panelName: 'sidebar' | 'chatPanel' | 'contextPanel'): void {
-    panelStyles.value = {
-      ...panelStyles.value,
-      [panelName]: { ...DEFAULT_PANEL_STYLE_SETTINGS },
-    }
-  }
-  
-  /**
-   * Get computed style for a panel (for Vue :style binding)
-   */
-  function getPanelStyle(panelName: 'sidebar' | 'chatPanel' | 'contextPanel'): Record<string, string> {
-    return computePanelStyle(panelStyles.value[panelName])
-  }
-  
-  /**
-   * Get panel data attributes for CSS targeting
-   */
-  function getPanelDataAttributes(
-    panelName: 'sidebar' | 'chatPanel' | 'contextPanel'
-  ): Record<string, string> {
-    const settings = panelStyles.value[panelName]
+  function getPanelDataAttributes(_panelName?: string): Record<string, string> {
     return {
-      'data-panel-effect': settings.effect,
+      'data-panel-effect': panelStyle.value.effect,
     }
   }
-  
-  /**
-   * Apply styles to DOM elements (for direct DOM manipulation)
-   */
-  function applyStylesToDOM(): void {
-    isApplying.value = true
-    
-    const sidebarEl = document.querySelector('.sidebar')
-    const chatPanelEl = document.querySelector('.conversation')
-    const contextPanelEl = document.querySelector('.float-panel')
-    
-    if (sidebarEl) {
-      applyPanelStyleToElement(sidebarEl as HTMLElement, panelStyles.value.sidebar, 'sidebar')
-    }
-    if (chatPanelEl) {
-      applyPanelStyleToElement(chatPanelEl as HTMLElement, panelStyles.value.chatPanel, 'chat')
-    }
-    if (contextPanelEl) {
-      applyPanelStyleToElement(contextPanelEl as HTMLElement, panelStyles.value.contextPanel, 'context')
-    }
-    
-    isApplying.value = false
-  }
-  
-  // Watch for settings changes and apply to DOM
-  watch(
-    panelStyles,
-    () => {
-      applyStylesToDOM()
-    },
-    { deep: true, immediate: true }
-  )
-  
+
   return {
     // State
-    panelStyles,
+    panelStyle,
     isApplying,
-    
+
     // Methods
-    updateSidebarStyle,
-    updateChatPanelStyle,
-    updateContextPanelStyle,
     updatePanelStyle,
-    resetAllPanelStyles,
+    setPanelEffect,
     resetPanelStyle,
     getPanelStyle,
     getPanelDataAttributes,
-    applyStylesToDOM,
   }
 }

@@ -130,12 +130,24 @@ const {
   resetBackground,
 } = useBackground()
 
-// Panel styles management
+// Computed source with getter/setter to ensure path normalization on manual input
+const backgroundSource = computed({
+  get: () => backgroundSettings.value.source,
+  set: (val: string) => setBackgroundSource(val),
+})
+
+// Panel styles management (global material effect)
 const {
-  panelStyles,
-  updatePanelStyle,
-  resetAllPanelStyles,
+panelStyle,
+updatePanelStyle,
+resetPanelStyle,
+getPanelStyle,
+getPanelDataAttributes,
 } = usePanelStyles()
+
+// Apply global material to settings nav
+const settingsNavStyle = computed(() => getPanelStyle())
+const settingsNavDataAttrs = computed(() => getPanelDataAttributes())
 
 /** Wrapper that also broadcasts theme changes to detached panel windows */
 function changeTheme(newTheme: 'dark' | 'light' | 'system') {
@@ -926,8 +938,10 @@ loadPromptContextCenter()
 </script>
 
 <template>
-  <div class="settings-page">
-    <div class="settings-window-controls">
+<div class="settings-page">
+<!-- Full-width draggable bar for window dragging -->
+<div class="top-drag-bar" />
+<div class="settings-window-controls">
       <UiButton variant="ghost" size="icon" class="window-btn minimize" :title="t('app.minimize')" @click="minimizeWindow">
         <Minus :size="14" />
       </UiButton>
@@ -939,7 +953,7 @@ loadPromptContextCenter()
       </UiButton>
     </div>
     <div class="settings-shell">
-      <nav class="settings-nav">
+      <nav class="settings-nav" :style="settingsNavStyle" v-bind="settingsNavDataAttrs">
         <div class="settings-nav-header">
           <UiButton variant="ghost" size="icon" :title="t('settings.back')" @click="router.push('/')">
             <ArrowLeft :size="16" />
@@ -2169,28 +2183,18 @@ loadPromptContextCenter()
             </button>
           </div>
           
-          <!-- Panel Styles Section -->
-          <h3>{{ t('settings.panelStyles') }}</h3>
-          <p class="accent-color-hint">{{ t('settings.panelStylesHint') }}</p>
+          <!-- Global Material Effect Section -->
+          <h3>{{ t('settings.globalMaterial') }}</h3>
+          <p class="accent-color-hint">{{ t('settings.globalMaterialHint') }}</p>
           <div class="panel-styles-grid">
             <PanelStyleControl
-              :label="t('settings.sidebar')"
-              :settings="panelStyles.sidebar"
-              @update="updatePanelStyle('sidebar', $event)"
-            />
-            <PanelStyleControl
-              :label="t('settings.chatPanel')"
-              :settings="panelStyles.chatPanel"
-              @update="updatePanelStyle('chatPanel', $event)"
-            />
-            <PanelStyleControl
-              :label="t('settings.contextPanel')"
-              :settings="panelStyles.contextPanel"
-              @update="updatePanelStyle('contextPanel', $event)"
+              :label="t('settings.globalMaterial')"
+              :settings="panelStyle"
+              @update="updatePanelStyle($event)"
             />
           </div>
           <div class="panel-styles-actions">
-            <UiButton variant="outline" size="sm" @click="resetAllPanelStyles">
+            <UiButton variant="outline" size="sm" @click="resetPanelStyle">
               {{ t('settings.resetPanelStyles') }}
             </UiButton>
           </div>
@@ -2232,7 +2236,7 @@ loadPromptContextCenter()
             <h3>{{ t('settings.backgroundSource') }}</h3>
             <div class="source-input-row">
               <UiInput
-                v-model="backgroundSettings.source"
+                v-model="backgroundSource"
                 :placeholder="t('settings.bgSourcePlaceholder')"
                 class="source-input"
               />

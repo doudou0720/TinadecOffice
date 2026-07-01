@@ -60,28 +60,27 @@ const {
 const agentLabel = computed(() => agentActivity.value.activeAgentName ?? null)
 
 // ---- Background customization ----
+// useBackground returns a singleton ref; the template renders the
+// background layer via reactive inline styles. applyBackground() sets
+// a data-bg-type attribute on <html> for optional CSS targeting.
 const {
   settings: backgroundSettings,
   applyBackground,
 } = useBackground()
 
-// Apply background settings when they change
+// Apply data-bg-type attribute when background settings change
 watch(backgroundSettings, () => {
   applyBackground()
 }, { deep: true, immediate: true })
 
-// ---- Panel styles ----
+// ---- Panel styles (global material effect) ----
+// All panels share the same global material setting.
+// Styles are applied via reactive :style bindings (getPanelStyle returns
+// a computed style object). No direct DOM manipulation needed.
 const {
-  panelStyles,
-  getPanelStyle,
-  getPanelDataAttributes,
-  applyStylesToDOM,
+getPanelStyle,
+getPanelDataAttributes,
 } = usePanelStyles()
-
-// Apply panel styles when they change
-watch(panelStyles, () => {
-  applyStylesToDOM()
-}, { deep: true, immediate: true })
 
 // Compute background style for the shell
 const backgroundStyle = computed(() => {
@@ -96,18 +95,15 @@ const backgroundStyle = computed(() => {
   
   return style
 })
+// Global material style — shared by all panels
+const sidebarStyle = computed(() => getPanelStyle())
+const sidebarDataAttrs = computed(() => getPanelDataAttributes())
 
-// Compute sidebar style
-const sidebarStyle = computed(() => getPanelStyle('sidebar'))
-const sidebarDataAttrs = computed(() => getPanelDataAttributes('sidebar'))
+const chatPanelStyle = computed(() => getPanelStyle())
+const chatPanelDataAttrs = computed(() => getPanelDataAttributes())
 
-// Compute chat panel style
-const chatPanelStyle = computed(() => getPanelStyle('chatPanel'))
-const chatPanelDataAttrs = computed(() => getPanelDataAttributes('chatPanel'))
-
-// Compute context panel style
-const contextPanelStyle = computed(() => getPanelStyle('contextPanel'))
-const contextPanelDataAttrs = computed(() => getPanelDataAttributes('contextPanel'))
+const contextPanelStyle = computed(() => getPanelStyle())
+const contextPanelDataAttrs = computed(() => getPanelDataAttributes())
 
 function generateTitle(content: string): string {
   const trimmed = content.trim()
@@ -374,6 +370,9 @@ onUnmounted(() => {
       />
     </div>
 
+    <!-- Full-width draggable bar for window dragging -->
+    <div class="top-drag-bar" />
+
     <AppHeader :busy="busy" />
 
     <section v-if="error" class="error-strip">{{ error }}</section>
@@ -381,9 +380,10 @@ onUnmounted(() => {
     <section
       class="workspace"
       :style="{
-        '--chat-left': '260px',
-        '--chat-right': rightRailCollapsed ? '52px' : `${rightRailWidth + 8}px`,
-        '--chat-top': '0px'
+        '--chat-left': '276px',
+        '--chat-right': rightRailCollapsed ? '52px' : `${rightRailWidth + 16}px`,
+        '--chat-top': '8px',
+        '--chat-bottom': '8px'
       }"
     >
       <ChatPanel

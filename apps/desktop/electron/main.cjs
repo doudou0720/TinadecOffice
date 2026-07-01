@@ -26,7 +26,10 @@ async function createWindow() {
     height: 920,
     minWidth: 1120,
     minHeight: 720,
-    backgroundColor: '#0d1117',
+    // transparent: true lets CSS border-radius on <html> create
+    // truly transparent rounded corners for the custom-drawn window.
+    transparent: true,
+    backgroundColor: '#00000000',
     title: 'TinadecOffice',
     frame: false,
     autoHideMenuBar: true,

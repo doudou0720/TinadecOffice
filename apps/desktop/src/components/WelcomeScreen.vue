@@ -29,6 +29,8 @@ const props = defineProps<{
   selectedProjectId: string | null
   modelName: string
   busy: boolean
+  panelStyle?: Record<string, string>
+  panelDataAttrs?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -164,7 +166,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
         </UiButton>
       </div>
 
-      <div class="welcome-dialog">
+      <div class="welcome-dialog" :style="panelStyle" v-bind="panelDataAttrs">
         <div class="welcome-dialog-main">
           <div class="welcome-dialog-plus-wrapper">
             <UiDropdownMenu v-model:open="showPlusMenu" class="plus-dropdown-menu">

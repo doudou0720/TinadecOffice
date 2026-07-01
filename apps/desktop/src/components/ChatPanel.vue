@@ -61,7 +61,7 @@ function handleReject(approvalId: string) {
 </script>
 
 <template>
-  <section ref="conversationRef" class="conversation" :class="conversationClass" :style="panelStyle" v-bind="panelDataAttrs">
+  <section ref="conversationRef" class="conversation" :class="conversationClass">
     <Transition name="chat-panel" mode="out-in">
       <template v-if="messages.length === 0">
         <WelcomeScreen
@@ -69,6 +69,8 @@ function handleReject(approvalId: string) {
           :selected-project-id="selectedProjectId"
           :model-name="modelName"
           :busy="busy"
+          :panel-style="panelStyle"
+          :panel-data-attrs="panelDataAttrs"
           @send="emit('welcome-send', $event)"
           @create-project="emit('create-project')"
           @select-project="emit('select-project', $event)"
@@ -77,7 +79,7 @@ function handleReject(approvalId: string) {
         />
       </template>
       <template v-else>
-        <div class="chat-active-panel" key="chat-active">
+        <div class="chat-active-panel" key="chat-active" :style="panelStyle" v-bind="panelDataAttrs">
           <ChatHeader :current-session="currentSession" />
           <MessageList
             :messages="messages"
