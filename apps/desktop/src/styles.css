@@ -149,7 +149,7 @@
 
   --text-primary: #c9d1d9;
   --text-secondary: #7d8590;
-  --text-muted: #565f6b;
+  --text-muted: #6e7681;
   --text-brand: #2ec4b6;
   --text-link: #2ec4b6;
   --text-error: #f85149;
@@ -163,7 +163,9 @@
   --accent-brand: #2ec4b6;
   --accent-soft: rgba(46, 196, 182, 0.12);
 
-  --shadow-panel: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-subtle: 0 1px 4px rgba(0, 0, 0, 0.18);
+  --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.32);
+  --shadow-elevated: 0 8px 28px rgba(0, 0, 0, 0.42);
   --shadow-focus: 0 0 0 2px rgba(46, 196, 182, 0.3);
 
   --scrollbar-thumb: rgba(125, 133, 144, 0.22);
@@ -208,7 +210,7 @@
 
   --text-primary: #1f2328;
   --text-secondary: #656d76;
-  --text-muted: #8c959f;
+  --text-muted: #7a8390;
   --text-brand: #1f6f68;
   --text-link: #0969da;
   --text-error: #8f2525;
@@ -222,7 +224,9 @@
   --accent-brand: #1f8f80;
   --accent-soft: rgba(31, 143, 128, 0.1);
 
-  --shadow-panel: 0 4px 12px rgba(26, 37, 38, 0.06);
+  --shadow-subtle: 0 1px 4px rgba(26, 37, 38, 0.04);
+  --shadow-panel: 0 4px 16px rgba(26, 37, 38, 0.07);
+  --shadow-elevated: 0 8px 28px rgba(26, 37, 38, 0.12);
   --shadow-focus: 0 0 0 2px rgba(31, 143, 128, 0.18);
 
   --scrollbar-thumb: rgba(31, 35, 40, 0.18);
@@ -973,13 +977,13 @@ html[data-bg-type="html"] .shell {
 }
 
 .model-readiness-panel {
-  display: grid;
-  gap: 12px;
-  margin: 16px 0;
-  padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--bg-primary);
+display: grid;
+gap: 12px;
+margin: 16px 0;
+padding: 14px;
+background: var(--bg-secondary);
+border-radius: 10px;
+box-shadow: var(--shadow-subtle);
 }
 
 .model-readiness-head,
@@ -1489,8 +1493,7 @@ html[data-bg-type="html"] .shell {
   gap: 12px;
   padding: 0 12px;
   height: 40px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-muted);
+  background: var(--bg-tertiary);
   -webkit-app-region: drag;
   flex-shrink: 0;
 }
@@ -1630,15 +1633,14 @@ html[data-bg-type="html"] .workspace {
 
 /* ===== Browser-style tab bar ===== */
 .browser-tab-bar {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  padding: 4px 4px 0 4px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-muted);
-  flex-shrink: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
+display: flex;
+align-items: center;
+gap: 1px;
+padding: 4px 4px 0 4px;
+background: var(--bg-tertiary);
+flex-shrink: 0;
+overflow-x: auto;
+scrollbar-width: thin;
 }
 
 .browser-tab-bar::-webkit-scrollbar {
@@ -1673,8 +1675,9 @@ html[data-bg-type="html"] .workspace {
 }
 
 .browser-tab.active {
-  color: var(--text-primary);
-  background: var(--bg-primary);
+color: var(--text-primary);
+background: var(--bg-primary);
+border-radius: 8px 8px 0 0;
 }
 
 .browser-tab.active::after {
@@ -2510,8 +2513,7 @@ flex-direction: column;
 gap: 0;
 border-radius: 12px;
 background: var(--bg-secondary);
-border: 1px solid var(--border-muted);
-box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+box-shadow: var(--shadow-panel);
 width: 100%;
 overflow: hidden;
 }
@@ -2790,11 +2792,11 @@ overflow: hidden;
 }
 
 .panel {
-  padding: 12px;
+padding: 12px;
 }
 
 .panel + .panel {
-  border-top: 1px solid var(--border-muted);
+margin-top: 4px;
 }
 
 .panel-title {
@@ -3162,10 +3164,9 @@ transition: left 0.2s ease, right 0.2s ease;
 }
 
 .composer-box {
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-muted);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-subtle);
 }
 
 .composer-main {
@@ -3515,11 +3516,10 @@ label {
 }
 
 .approval-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 10px 0;
-  border-top: 1px solid var(--border-muted);
+display: grid;
+grid-template-columns: minmax(0, 1fr) auto;
+gap: 10px;
+padding: 10px 0;
 }
 
 .approval-row strong {
@@ -4401,10 +4401,9 @@ label {
 }
 
 .orchestration-block {
-  border-bottom: 1px solid var(--border-muted);
-  display: grid;
-  gap: 8px;
-  padding-bottom: 12px;
+display: grid;
+gap: 8px;
+padding-bottom: 12px;
 }
 
 .orchestration-block-head {
@@ -4418,16 +4417,16 @@ label {
 .context-pack-row,
 .step-result-row,
 .tool-execution-row {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-muted);
-  border-radius: 8px;
-  display: grid;
-  gap: 5px;
-  padding: 9px;
+background: var(--bg-tertiary);
+border-radius: 8px;
+box-shadow: var(--shadow-subtle);
+display: grid;
+gap: 5px;
+padding: 9px;
 }
 
 .tool-execution-row.risky {
-  border-color: rgba(248, 81, 73, 0.36);
+box-shadow: 0 0 0 1px rgba(248, 81, 73, 0.36), var(--shadow-subtle);
 }
 
 .tool-execution-top {
@@ -4532,9 +4531,8 @@ overflow: auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 0 16px;
+  padding: 0 0 12px;
   margin-bottom: 8px;
-  border-bottom: 1px solid var(--border-muted);
 }
 
 .settings-nav-header span {
@@ -4606,23 +4604,26 @@ overflow: auto;
   justify-content: center !important;
   gap: 8px;
   padding: 10px 12px;
-  border: 2px solid var(--border-input);
-  border-radius: 8px;
+  border: 2px solid transparent;
+  border-radius: 10px;
   background: var(--bg-secondary);
+  box-shadow: var(--shadow-subtle);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .theme-option:hover {
   border-color: var(--border-input-focus);
+  box-shadow: var(--shadow-panel);
 }
 
 .theme-option.active {
-  border-color: var(--accent-primary);
-  color: var(--accent-primary);
+border-color: var(--accent-primary);
+color: var(--accent-primary);
+box-shadow: 0 0 0 1px var(--accent-primary), var(--shadow-subtle);
 }
 
 .accent-color-hint {
@@ -4639,27 +4640,29 @@ overflow: auto;
 }
 
 .accent-color-swatch {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 14px 8px;
-  border: 2px solid var(--border-input);
-  border-radius: 10px;
-  background: var(--bg-secondary);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
-  position: relative;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 8px;
+padding: 14px 8px;
+border: 2px solid transparent;
+border-radius: 10px;
+background: var(--bg-secondary);
+box-shadow: var(--shadow-subtle);
+cursor: pointer;
+transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+position: relative;
 }
 
 .accent-color-swatch:hover {
-  border-color: var(--swatch-color);
-  background: var(--bg-hover);
+border-color: var(--swatch-color);
+background: var(--bg-hover);
+box-shadow: var(--shadow-panel);
 }
 
 .accent-color-swatch.active {
-  border-color: var(--swatch-color);
-  box-shadow: 0 0 0 1px var(--swatch-color), 0 2px 8px rgba(0, 0, 0, 0.15);
+border-color: var(--swatch-color);
+box-shadow: 0 0 0 1px var(--swatch-color), var(--shadow-panel);
 }
 
 .accent-color-dot {
@@ -4860,12 +4863,13 @@ overflow: auto;
   background: var(--bg-secondary);
   cursor: pointer;
   text-align: left;
+  box-shadow: var(--shadow-subtle);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
 .model-provider-card:hover {
   border-color: var(--border-input-focus);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-panel);
 }
 
 .model-provider-card-main {
@@ -6063,10 +6067,79 @@ box-shadow: var(--shadow-panel);
 /* ===== Panel Style Effects ===== */
 /* Base z-index for panels above background layer.
    Visual effects (translucent, blur) are applied via inline styles
-   from computePanelStyle() in usePanelStyles.ts. */
+   from computePanelStyle() in usePanelStyles.ts.
+
+   When a panel has data-panel-effect="translucent" or "blur",
+   its inner elements must become transparent so the backdrop-filter
+   and semi-transparent background show through consistently. */
+
 .panel-styled {
   position: relative;
   z-index: 1;
+}
+
+/* ---- Material effect inheritance ----
+   When the panel is translucent or blur, inner solid backgrounds
+   are removed so the material effect is visible throughout the panel. */
+
+/* Sidebar inner elements */
+.sidebar[data-panel-effect="translucent"] .sidebar-topbar,
+.sidebar[data-panel-effect="blur"] .sidebar-topbar,
+.sidebar[data-panel-effect="translucent"] .sidebar-search-box,
+.sidebar[data-panel-effect="blur"] .sidebar-search-box {
+  background: transparent;
+}
+
+/* Chat active panel inner elements */
+.chat-active-panel[data-panel-effect="translucent"],
+.chat-active-panel[data-panel-effect="blur"] {
+  border-color: transparent;
+}
+
+.chat-active-panel[data-panel-effect="translucent"] .conversation-head,
+.chat-active-panel[data-panel-effect="blur"] .conversation-head {
+  background: transparent;
+}
+
+/* Welcome dialog inner elements */
+.welcome-dialog[data-panel-effect="translucent"],
+.welcome-dialog[data-panel-effect="blur"] {
+  border-color: transparent;
+}
+
+/* Settings nav inner elements */
+.settings-nav[data-panel-effect="translucent"],
+.settings-nav[data-panel-effect="blur"] {
+  border-color: transparent;
+}
+
+.settings-nav[data-panel-effect="translucent"] .settings-nav-header,
+.settings-nav[data-panel-effect="blur"] .settings-nav-header {
+  background: transparent;
+}
+
+/* Context panel (float-panel) inner elements */
+.float-panel[data-panel-effect="translucent"],
+.float-panel[data-panel-effect="blur"] {
+border-color: transparent;
+}
+
+.float-panel[data-panel-effect="translucent"] .browser-tab-bar,
+.float-panel[data-panel-effect="blur"] .browser-tab-bar {
+background: transparent;
+}
+
+.float-panel[data-panel-effect="translucent"] .browser-tab.active,
+.float-panel[data-panel-effect="blur"] .browser-tab.active {
+background: rgba(var(--bg-primary-rgb, 10, 14, 20), 0.6);
+}
+
+/* ---- Consistent material application ----
+   Ensure all panels with material effects share the same visual
+   treatment: rounded corners, no hard borders, unified shadow. */
+[data-panel-effect="translucent"],
+[data-panel-effect="blur"] {
+  border-color: transparent;
 }
 
 /* ===== Settings Page Background Styles ===== */
@@ -6077,25 +6150,26 @@ box-shadow: var(--shadow-panel);
 }
 
 .bg-type-option {
-  padding: 8px 16px;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-default);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
+padding: 8px 16px;
+border-radius: 8px;
+background: var(--bg-tertiary);
+color: var(--text-primary);
+border: 1px solid transparent;
+box-shadow: var(--shadow-subtle);
+cursor: pointer;
+transition: all 0.2s ease;
+font-size: 13px;
 }
 
 .bg-type-option:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-muted);
+background: var(--bg-hover);
+box-shadow: var(--shadow-panel);
 }
 
 .bg-type-option.active {
-  background: var(--accent-soft);
-  color: var(--accent-primary);
-  border-color: var(--accent-primary);
+background: var(--accent-soft);
+color: var(--accent-primary);
+box-shadow: 0 0 0 1px var(--accent-primary), var(--shadow-subtle);
 }
 
 .background-source-section,

@@ -57,7 +57,9 @@ export function computePanelStyle(settings: PanelStyleSettings): Record<string, 
       style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
     case 'blur':
+      // Use both standard and -webkit prefixed for Chromium/Electron compatibility
       style.backdropFilter = `blur(${clamp(settings.blur, 0, 20)}px)`
+      style.WebkitBackdropFilter = `blur(${clamp(settings.blur, 0, 20)}px)`
       style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
   }

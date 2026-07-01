@@ -41,8 +41,7 @@ const showBlur = computed(() => props.settings.effect === 'blur')
 const previewStyle = computed(() => {
   const style: Record<string, string> = {
     height: '56px',
-    borderRadius: '6px',
-    border: '1px solid var(--border-default)',
+    borderRadius: '8px',
     transition: 'all 0.2s ease',
   }
   const alpha = props.settings.opacity / 100
@@ -56,6 +55,7 @@ const previewStyle = computed(() => {
       break
     case 'blur':
       style.backdropFilter = `blur(${props.settings.blur}px)`
+      style.WebkitBackdropFilter = `blur(${props.settings.blur}px)`
       style.backgroundColor = `rgba(var(--bg-primary-rgb, 10, 14, 20), ${alpha})`
       break
   }
@@ -146,9 +146,10 @@ function reset(): void {
 <style scoped>
 .panel-style-control {
   padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   background: var(--bg-secondary);
+  box-shadow: var(--shadow-subtle);
 }
 
 .control-header {
@@ -196,8 +197,8 @@ function reset(): void {
   font-weight: 500;
   color: var(--text-secondary);
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.1s;
 }

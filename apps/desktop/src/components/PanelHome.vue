@@ -201,8 +201,9 @@ function handleClick(feature: FeatureCard) {
   gap: 8px;
   padding: 12px 10px;
   background: var(--bg-tertiary);
-  border: 1px solid var(--border-muted);
+  border: 1px solid transparent;
   border-radius: 10px;
+  box-shadow: var(--shadow-subtle);
   cursor: pointer;
   transition: all 0.18s ease;
   text-align: left;
@@ -224,6 +225,7 @@ function handleClick(feature: FeatureCard) {
 .panel-home-card:hover {
   background: var(--bg-hover);
   border-color: var(--card-color, var(--accent-primary));
+  box-shadow: var(--shadow-panel);
   transform: translateY(-1px);
 }
 
@@ -288,7 +290,6 @@ function handleClick(feature: FeatureCard) {
 .panel-home-footer {
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid var(--border-muted);
   text-align: center;
 }
 
