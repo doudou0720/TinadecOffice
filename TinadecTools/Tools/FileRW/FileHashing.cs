@@ -1,7 +1,5 @@
-﻿using System.Diagnostics;
-using System.IO.Hashing;
+﻿using System.IO.Hashing;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace TinadecTools.Tools.FileRW;
 
@@ -39,15 +37,12 @@ internal static class FileHashing
     public static string ComputeLineHash(string line, int? linenumber)
     {
         var normalized = line.Replace("\r", "").TrimEnd();
-        var match = Regex.IsMatch(normalized, @"/[\p{L}\p{N}]/u"); // 是不是有字母或者数字
-        if (!match && linenumber is null)
+        var hasSignificantContent = normalized.Any(char.IsLetterOrDigit);
+        if (!hasSignificantContent && linenumber is null)
             throw new ArgumentNullException(nameof(linenumber));
 
-        Debug.Assert(linenumber != null, nameof(linenumber) + " != null");
-        var seed = match ? 0 : linenumber.Value;
-        //实验性功能，如果不成就回退到原版
-        var hash = XxHash32.HashToUInt32(Encoding.UTF8.GetBytes(line), linenumber.GetValueOrDefault(0));
-        // var hash = (int)XxHash32.HashToUInt32(Encoding.UTF8.GetBytes(line), seed);
+        var seed = hasSignificantContent ? 0 : linenumber!.Value;
+        var hash = XxHash32.HashToUInt32(Encoding.UTF8.GetBytes(normalized), seed);
         return GetHashLineDict((int)(hash & 0xFF));
     }
 

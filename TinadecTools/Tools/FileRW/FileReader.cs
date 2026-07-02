@@ -81,7 +81,7 @@ public static class FileReader
                     .ConfigureAwait(false);
 
                 var contents = lines
-                    .Select(line => new LineContent(line.Content, line.LineNumber + 1, line.LineLength))
+                    .Select(line => new LineContent(line.Content, line.LineNumber + 1, line.StartOffset, line.EndOffset))
                     .Select(line => new ExtendedLineContent(line))
                     .ToList();
 

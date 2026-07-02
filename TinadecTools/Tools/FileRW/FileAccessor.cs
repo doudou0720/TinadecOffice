@@ -23,11 +23,13 @@ internal record struct LineSpan(
 /// </summary>
 /// <param name="Content">具体内容（不包括换行符）</param>
 /// <param name="LineNumber">行号</param>
-/// <param name="LineLength">本行长度</param>
+/// <param name="StartOffset">本行起始字节偏移</param>
+/// <param name="EndOffset">本行结束字节偏移（排他，包含换行符）</param>
 public record struct LineContent(
     string Content,
     int LineNumber,
-    long LineLength
+    long StartOffset,
+    long EndOffset
 );
 
 internal class FileAccessor : IDisposable
@@ -297,7 +299,8 @@ internal class FileAccessor : IDisposable
                     contents.Add(new LineContent(
                         string.Empty,
                         line,
-                        0));
+                        span.LineStart,
+                        span.NextStart));
                     continue;
                 }
 
@@ -315,7 +318,8 @@ internal class FileAccessor : IDisposable
                     contents.Add(new LineContent(
                         content,
                         line,
-                        bytesRead));
+                        span.LineStart,
+                        span.NextStart));
                 }
                 finally
                 {
