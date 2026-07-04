@@ -17,3 +17,8 @@ native/target/
 native/codex-src/
 /native/codex-src
 .omo/
+.idea/
+.opencode/
+*.log
+config.json
+oc-debug.log
