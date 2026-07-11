@@ -249,14 +249,14 @@ function openDebugStudio() {
             :class="{ active: selectedMode === 'im' }"
             @click="selectMode('im')"
           >
-            <span>im 模式</span>
+            <span>会话模式</span>
           </button>
           <button
             class="mode-menu-item"
             :class="{ active: selectedMode === 'hub' }"
             @click="selectMode('hub')"
           >
-            <span>hub 模式</span>
+            <span>空间模式</span>
           </button>
         </UiDropdownMenu>
       </div>
