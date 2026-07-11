@@ -1,9 +1,7 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { callToolLayer } from './toolLayerBridge.js';
 
 export interface CodeToolExecuteRequest {
   session_id?: string | null;
@@ -16,7 +14,7 @@ export interface CodeToolExecuteRequest {
 
 export interface CodeToolExecuteResult {
   tool_id: string;
-  status: 'native' | 'completed' | 'stubbed' | 'blocked' | 'failed';
+  status: 'completed' | 'stubbed' | 'blocked' | 'failed';
   summary: string;
   evidence: string[];
   data: Record<string, unknown>;
@@ -51,7 +49,6 @@ interface CodeToolSpec {
   requiresApproval: boolean;
   approvalSummary?: string;
   language_support?: string[];
-  nativeBacked?: boolean;
 }
 
 interface ProjectTemplateFile {
@@ -195,60 +192,53 @@ const TOOL_SPECS: Record<string, CodeToolSpec> = {
     id: 'search_files',
     summary: 'Fuzzy file-name search powered by Codex Rust codex-file-search (nucleo matcher). Returns ranked matches with scores.',
     category: 'primitive',
-    requiresApproval: false,
-    nativeBacked: true
+    requiresApproval: false
   },
   glob_search: {
     id: 'glob_search',
     summary: 'Glob-pattern file search powered by Codex Rust ignore crate (WalkBuilder). Supports patterns like **/*.rs, src/**/*.ts.',
     category: 'primitive',
-    requiresApproval: false,
-    nativeBacked: true
+    requiresApproval: false
   },
   read_file: {
     id: 'read_file',
     summary: 'Read file contents with optional line range. Returns content with line numbers. Detects binary files.',
     category: 'primitive',
-    requiresApproval: false,
-    nativeBacked: true
+    requiresApproval: false
   },
   list_directory: {
     id: 'list_directory',
     summary: 'List directory entries with metadata (directories first, then files). Supports hidden file toggle.',
     category: 'primitive',
-    requiresApproval: false,
-    nativeBacked: true
+    requiresApproval: false
   },
   grep_content: {
     id: 'grep_content',
     summary: 'Search file contents for a text pattern with optional glob filter, context lines, and case-insensitive mode.',
     category: 'primitive',
-    requiresApproval: false,
-    nativeBacked: true
+    requiresApproval: false
   },
   sandbox_exec: {
     id: 'sandbox_exec',
     summary: 'Codex sandbox exec adapter. Execution is blocked until Core approval is supplied.',
     category: 'environment',
     requiresApproval: true,
-    approvalSummary: 'Run a sandboxed command in the workspace.',
-    nativeBacked: true
+    approvalSummary: 'Run a sandboxed command in the workspace.'
   },
   apply_patch: {
     id: 'apply_patch',
     summary: 'Codex apply_patch adapter. Workspace writes are blocked until Core approval is supplied.',
     category: 'editor',
     requiresApproval: true,
-    approvalSummary: 'Apply a patch that may modify workspace files.',
-    nativeBacked: true
+    approvalSummary: 'Apply a patch that may modify workspace files.'
   },
   review_format: {
     id: 'review_format',
     summary: 'Format code review findings as structured markdown with severity markers and summary.',
     category: 'review',
-    requiresApproval: false,
-    nativeBacked: true
+    requiresApproval: false
   },
+  // TODO: DEFERRED - 待 Tool layer 补 scaffold 后迁移
   project_templates: {
     id: 'project_templates',
     summary: 'List and preview built-in project templates for Node.js, Bun, Go, Flutter, Python, Rust, Zig, Nim, C#, and Java.',
@@ -256,6 +246,7 @@ const TOOL_SPECS: Record<string, CodeToolSpec> = {
     requiresApproval: false,
     language_support: CODE_LANGUAGE_SUPPORT
   },
+  // TODO: DEFERRED - 待 Tool layer 补 scaffold 后迁移
   project_template_scaffold: {
     id: 'project_template_scaffold',
     summary: 'Create a project from a built-in Code template inside the approved workspace.',
@@ -264,6 +255,7 @@ const TOOL_SPECS: Record<string, CodeToolSpec> = {
     approvalSummary: 'Write a new project scaffold into the workspace.',
     language_support: CODE_LANGUAGE_SUPPORT
   },
+  // TODO: DEFERRED - 待 Tool layer 定义 runtime probe 契约
   language_runtime_probe: {
     id: 'language_runtime_probe',
     summary: 'Report built-in language/runtime support expected from the Code tool suite.',
@@ -278,6 +270,7 @@ const TOOL_SPECS: Record<string, CodeToolSpec> = {
     requiresApproval: true,
     approvalSummary: 'Run a workspace command through the Code bash-like environment.'
   },
+  // TODO: DEFERRED - 待 Tool layer 定义 debug session 契约
   debug_session: {
     id: 'debug_session',
     summary: 'Built-in debug session surface for launch requests, breakpoints, logs, traces, and repro controls.',
@@ -292,20 +285,13 @@ const TOOL_SPECS: Record<string, CodeToolSpec> = {
     requiresApproval: true,
     approvalSummary: 'Modify workspace files through the built-in code editor.'
   },
+  // TODO: DEFERRED - 待 Tool layer 补 git 能力后迁移
   git_worktree_manager: {
     id: 'git_worktree_manager',
     summary: 'Git worktree manager for branches, isolated workspaces, diffs, commits, rebases, and conflicts.',
     category: 'git',
     requiresApproval: true,
     approvalSummary: 'Create or modify Git branches/worktrees.'
-  },
-  terminal: {
-    id: 'terminal',
-    summary: 'Interactive terminal emulator with PTY support for running commands, scripts, and interactive programs.',
-    category: 'environment',
-    requiresApproval: true,
-    approvalSummary: 'Create or interact with an interactive terminal session.',
-    nativeBacked: true
   }
 };
 
@@ -438,17 +424,96 @@ function allowedApprovalKindsForTool(toolId: string): string[] {
   return ['code', 'tool', toolId];
 }
 
+interface ToolLayerDirectoryEntry {
+  name: string;
+  path: string;
+  type: 'directory' | 'file' | 'link';
+  size: number;
+  modified_at: string;
+  is_readonly: boolean;
+  is_hidden: boolean;
+  link_target: string | null;
+}
+
+interface ToolLayerListDirectoryResult {
+  success: boolean;
+  error: string | null;
+  entries: ToolLayerDirectoryEntry[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+async function executeListDirectoryViaToolLayer(
+  spec: CodeToolSpec,
+  request: CodeToolExecuteRequest
+): Promise<CodeToolExecuteResult> {
+  const args = request.arguments ?? {};
+  const requestedPath = stringArg(args, 'path') ?? '.';
+  const showHidden = args['show_hidden'] === true;
+  const cwd = request.cwd;
+  if (!cwd) {
+    return failedResult(spec, 'list_directory requires a cwd (workspace root).', args, ['list_directory:missing-cwd']);
+  }
+
+  try {
+    const entries: ToolLayerDirectoryEntry[] = [];
+    let cursor: string | null = null;
+    let hasMore = true;
+    while (hasMore && entries.length < 2_000) {
+      const result = await callToolLayer(cwd, 'ls', {
+        path: requestedPath,
+        limit: 500,
+        cursor
+      }, { sessionId: request.session_id });
+      if (!isToolLayerListDirectoryResult(result)) {
+        throw new Error('TinadecTools returned an invalid ls result.');
+      }
+      if (!result.success) {
+        return failedResult(spec, result.error ?? 'TinadecTools ls failed.', args, ['list_directory:tool-layer-rejected']);
+      }
+      entries.push(...result.entries);
+      cursor = result.next_cursor;
+      hasMore = result.has_more;
+      if (hasMore && !cursor) throw new Error('TinadecTools ls returned has_more without next_cursor.');
+    }
+
+    const visible = entries
+      .filter((entry) => showHidden || !entry.is_hidden)
+      .sort((left, right) => {
+        const leftDirectory = left.type === 'directory';
+        const rightDirectory = right.type === 'directory';
+        if (leftDirectory !== rightDirectory) return leftDirectory ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      })
+      .map((entry) => ({ ...entry, is_directory: entry.type === 'directory' }));
+    const truncated = hasMore;
+    return resultFor(spec, 'completed', `Listed ${visible.length} entries in ${requestedPath}.`, {
+      cwd: path.resolve(cwd),
+      path: requestedPath,
+      show_hidden: showHidden,
+      entries: visible,
+      total_count: visible.length,
+      truncated
+    }, ['list_directory:tool-layer', 'tool_id:ls']);
+  } catch (error) {
+    return failedResult(spec, error instanceof Error ? error.message : String(error), args, ['list_directory:tool-layer-failed']);
+  }
+}
+
+function isToolLayerListDirectoryResult(value: unknown): value is ToolLayerListDirectoryResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ToolLayerListDirectoryResult>;
+  return typeof candidate.success === 'boolean' && Array.isArray(candidate.entries);
+}
+
 export async function executeCodeTool(toolId: string, request: CodeToolExecuteRequest = {}): Promise<CodeToolExecuteResult | null> {
   const spec = TOOL_SPECS[toolId];
   if (!spec) {
     return null;
   }
 
-  if (spec.nativeBacked) {
-    const nativeResult = await tryExecuteNativeTool(spec, request);
-    if (nativeResult) {
-      return nativeResult;
-    }
+  if (spec.id === 'list_directory') {
+    return executeListDirectoryViaToolLayer(spec, request);
   }
 
   const args = request.arguments ?? {};
@@ -464,9 +529,6 @@ export async function executeCodeTool(toolId: string, request: CodeToolExecuteRe
   if (spec.id === 'code_editor') {
     return executeCodeEditor(spec, request, args);
   }
-  if (spec.id === 'terminal') {
-    return executeTerminal(spec, request, args);
-  }
 
   return {
     tool_id: spec.id,
@@ -476,7 +538,7 @@ export async function executeCodeTool(toolId: string, request: CodeToolExecuteRe
       'domain: programming',
       'state_owner: core',
       'tool_layer: code',
-      spec.nativeBacked ? 'native_runtime: pending' : 'code_suite: metadata'
+      'code_suite: metadata'
     ],
     data: fallbackData(spec, request, args),
     requires_approval: spec.requiresApproval,
@@ -692,173 +754,6 @@ async function executeCodeEditor(
   }
 
   return failedResult(spec, `Unsupported code_editor action '${action}'.`, args, ['code_editor:unsupported-action']);
-}
-
-async function executeTerminal(
-  spec: CodeToolSpec,
-  request: CodeToolExecuteRequest,
-  args: Record<string, unknown>
-): Promise<CodeToolExecuteResult> {
-  const action = stringArg(args, 'action') ?? 'create';
-  
-  // create: 创建新终端
-  if (action === 'create') {
-    const shell = stringArg(args, 'shell') ?? getDefaultShell();
-    const shellArgs = stringListArg(args, 'args');
-    const cwd = request.cwd ?? process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
-    const cols = numberArg(args, 'cols') ?? 80;
-    const rows = numberArg(args, 'rows') ?? 24;
-    const title = stringArg(args, 'title') ?? path.basename(shell);
-    
-    // 调用Native层创建PTY
-    // 这里需要通过Core层或直接调用Native层
-    // 暂时返回stubbed状态，等待Native层集成
-    return resultFor(spec, 'stubbed', 'Terminal creation not yet implemented in Gateway.', {
-      action: 'create',
-      shell,
-      args: shellArgs,
-      cwd,
-      cols,
-      rows,
-      title
-    }, ['terminal:create', 'status:stubbed']);
-  }
-  
-  // write: 向终端写入数据
-  if (action === 'write') {
-    const terminalId = stringArg(args, 'terminal_id');
-    const data = stringArg(args, 'data');
-    
-    if (!terminalId || !data) {
-      return failedResult(spec, 'terminal write requires terminal_id and data.', args);
-    }
-    
-    // 调用Native层写入数据
-    return resultFor(spec, 'stubbed', 'Terminal write not yet implemented in Gateway.', {
-      action: 'write',
-      terminal_id: terminalId,
-      data_length: data.length
-    }, ['terminal:write', 'status:stubbed']);
-  }
-  
-  // resize: 调整终端大小
-  if (action === 'resize') {
-    const terminalId = stringArg(args, 'terminal_id');
-    const cols = numberArg(args, 'cols') ?? 80;
-    const rows = numberArg(args, 'rows') ?? 24;
-    
-    if (!terminalId) {
-      return failedResult(spec, 'terminal resize requires terminal_id.', args);
-    }
-    
-    // 调用Native层调整大小
-    return resultFor(spec, 'stubbed', 'Terminal resize not yet implemented in Gateway.', {
-      action: 'resize',
-      terminal_id: terminalId,
-      cols,
-      rows
-    }, ['terminal:resize', 'status:stubbed']);
-  }
-  
-  // destroy: 销毁终端
-  if (action === 'destroy') {
-    const terminalId = stringArg(args, 'terminal_id');
-    
-    if (!terminalId) {
-      return failedResult(spec, 'terminal destroy requires terminal_id.', args);
-    }
-    
-    // 调用Native层销毁终端
-    return resultFor(spec, 'stubbed', 'Terminal destroy not yet implemented in Gateway.', {
-      action: 'destroy',
-      terminal_id: terminalId
-    }, ['terminal:destroy', 'status:stubbed']);
-  }
-  
-  // list: 列出活跃终端
-  if (action === 'list') {
-    // 调用Native层获取终端列表
-    return resultFor(spec, 'stubbed', 'Terminal list not yet implemented in Gateway.', {
-      action: 'list'
-    }, ['terminal:list', 'status:stubbed']);
-  }
-  
-  // get_shells: 获取可用shell列表
-  if (action === 'get_shells') {
-    const shells = getAvailableShells();
-    return resultFor(spec, 'completed', 'Available shells retrieved.', {
-      action: 'get_shells',
-      shells
-    }, ['terminal:get_shells']);
-  }
-  
-  return failedResult(spec, `Unsupported terminal action '${action}'.`, args);
-}
-
-function getDefaultShell(): string {
-  if (process.platform === 'win32') {
-    return 'powershell.exe';
-  }
-  return '/bin/bash';
-}
-
-function getAvailableShells(): Array<{id: string, label: string, shell: string, args: string[]}> {
-  const shells: Array<{id: string, label: string, shell: string, args: string[]}> = [];
-  
-  if (process.platform === 'win32') {
-    // PowerShell 7+ (pwsh)
-    const pwshPaths = [
-      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
-      'C:\\Program Files\\PowerShell\\6\\pwsh.exe',
-    ];
-    const pwshPath = pwshPaths.find((p) => {
-      try { return existsSync(p); } catch { return false; }
-    });
-    if (pwshPath) {
-      shells.push({ id: 'pwsh', label: 'PowerShell 7', shell: pwshPath, args: ['-NoLogo'] });
-    }
-    
-    // Windows PowerShell (built-in)
-    shells.push({
-      id: 'powershell',
-      label: 'Windows PowerShell',
-      shell: 'powershell.exe',
-      args: ['-NoLogo'],
-    });
-    
-    // Command Prompt
-    shells.push({
-      id: 'cmd',
-      label: 'Command Prompt',
-      shell: 'cmd.exe',
-      args: [],
-    });
-    
-    // Git Bash (if installed)
-    const gitBashPaths = [
-      'C:\\Program Files\\Git\\bin\\bash.exe',
-      'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
-    ];
-    const gitBashPath = gitBashPaths.find((p) => {
-      try { return existsSync(p); } catch { return false; }
-    });
-    if (gitBashPath) {
-      shells.push({ id: 'gitbash', label: 'Git Bash', shell: gitBashPath, args: ['--login', '-i'] });
-    }
-  } else if (process.platform === 'darwin') {
-    shells.push({ id: 'zsh', label: 'zsh', shell: '/bin/zsh', args: ['-l'] });
-    shells.push({ id: 'bash', label: 'bash', shell: '/bin/bash', args: ['-l'] });
-  } else {
-    // Linux
-    shells.push({ id: 'bash', label: 'bash', shell: '/bin/bash', args: ['-l'] });
-    try {
-      if (existsSync('/bin/zsh')) {
-        shells.push({ id: 'zsh', label: 'zsh', shell: '/bin/zsh', args: ['-l'] });
-      }
-    } catch { /* ignore */ }
-  }
-  
-  return shells;
 }
 
 async function executeGitWorktreeManager(
@@ -3061,102 +2956,4 @@ function fallbackData(spec: CodeToolSpec, request: CodeToolExecuteRequest, args:
     category: spec.category,
     language_support: spec.language_support ?? []
   };
-}
-
-async function tryExecuteNativeTool(spec: CodeToolSpec, request: CodeToolExecuteRequest): Promise<CodeToolExecuteResult | null> {
-  const binary = resolveNativeBinary();
-  if (!binary) {
-    return null;
-  }
-
-  const payload = JSON.stringify({
-    tool_id: spec.id,
-    session_id: request.session_id ?? null,
-    run_id: request.run_id ?? null,
-    task_node_id: request.task_node_id ?? null,
-    approval_id: request.approval_id ?? null,
-    cwd: request.cwd ?? null,
-    arguments: request.arguments ?? {}
-  });
-
-  return new Promise((resolve) => {
-    const child = spawn(binary, ['execute'], {
-      cwd: request.cwd ?? process.cwd(),
-      env: {
-        ...process.env,
-        PATH: nativeRuntimePath()
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true
-    });
-
-    let stdout = '';
-    let stderr = '';
-    const timeout = setTimeout(() => {
-      child.kill();
-      resolve(null);
-    }, 15_000);
-
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', () => {
-      clearTimeout(timeout);
-      resolve(null);
-    });
-    child.on('close', (code) => {
-      clearTimeout(timeout);
-      if (code !== 0 || stdout.trim().length === 0) {
-        if (stderr.trim().length > 0) {
-          console.warn(`tinadec-code-native failed: ${stderr.trim()}`);
-        }
-        resolve(null);
-        return;
-      }
-
-      try {
-        resolve(JSON.parse(stdout) as CodeToolExecuteResult);
-      } catch {
-        resolve(null);
-      }
-    });
-    child.stdin.end(payload);
-  });
-}
-
-function nativeRuntimePath(): string {
-  const separator = process.platform === 'win32' ? ';' : ':';
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const repoRoot = path.resolve(here, '..', '..', '..');
-  const runtimeDirs: string[] = [];
-
-  const cargoHome = process.env.CARGO_HOME || process.env.RUSTUP_HOME;
-  if (cargoHome) {
-    runtimeDirs.push(path.join(cargoHome, 'bin'));
-  }
-
-  runtimeDirs.push(
-    path.join(repoRoot, 'native', 'target', 'debug'),
-    path.join(repoRoot, 'native', 'target', 'release')
-  );
-
-  return [...runtimeDirs, process.env.PATH ?? ''].join(separator);
-}
-
-function resolveNativeBinary(): string | null {
-  const explicit = process.env.TINADEC_CODE_NATIVE_BIN;
-  if (explicit && existsSync(explicit)) {
-    return explicit;
-  }
-
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const repoRoot = path.resolve(here, '..', '..', '..');
-  const exe = process.platform === 'win32' ? 'tinadec-code-native.exe' : 'tinadec-code-native';
-  const candidates = [
-    path.join(repoRoot, 'native', 'target', 'debug', exe),
-    path.join(repoRoot, 'native', 'target', 'release', exe)
-  ];
-
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
