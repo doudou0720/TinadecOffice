@@ -1,0 +1,50 @@
+# GATEWAY KNOWLEDGE
+
+## OVERVIEW
+Elysia TypeScript BFF/API layer. It proxies Core HTTP/SSE/debug routes and hosts Code tool endpoints for Desktop.
+
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| Server routes | `src/index.ts` | Elysia app, Swagger, manual CORS, `/api/v1/*`. |
+| Core proxy | `src/coreClient.ts` | `coreUrl`, JSON proxy, SSE proxy. |
+| Debug proxy | `src/debugProxy.ts` | Debug API + WebSocket URL helpers. |
+| Code tools | `src/codeTools.ts` | Tool execution/fallback boundary and Gateway DTO adapters. |
+| Tool-layer bridge | `src/toolLayerBridge.ts` | Workspace-scoped TinadecTools stdio process lifecycle and request correlation. |
+| Tests | `src/coreClient.test.ts`, `src/codeTools.test.ts` | Node test runner + `tsx`; the latter covers TinadecTools bridge calls. |
+
+## CONVENTIONS
+- Package is ESM (`"type": "module"`); TypeScript uses `NodeNext`.
+- Keep Gateway thin. Core owns state, approvals, model routes, sessions, events, and persistence.
+- Prompt fragment CRUD and prompt context preview routes are Core proxies only. Do not add prompt selection, token budgeting, or prompt assembly logic in Gateway.
+- Harness manifest, tool search, and tool execution timeline routes are Core proxies only. Do not recompute agent layers, provider layers, risk policy, matched fields, approval summaries, or execution audit state in Gateway.
+- `/api/v1/code/tools` publishes Tool-layer Code-suite metadata with snake_case public DTO fields. `src/codeTools.ts` keeps internal spec fields camelCase and maps them at the API boundary.
+- `list_directory` maps to the C# TinadecTools `ls` tool; `search_files` and `glob_search` map to its `file_search` tool through `src/toolLayerBridge.ts`. Keep workspace/path validation and link traversal policy in TinadecTools; Gateway may only adapt request/result DTOs, hidden-entry filtering, ordering, and pagination.
+- Tool-layer processes are cached per resolved workspace because TinadecTools snapshots its workspace at startup and keeps state. Calls reuse the existing stdio process; only a missing or exited instance is replaced, with `cwd` set to that workspace. Configure the executable with `TINADEC_TOOLS_BIN`; optional `TINADEC_TOOLS_ARGS` is a JSON string array.
+- Code-suite tools include project templates, runtime probe, bash-like environment, debugging, editor, Git worktree manager, and Codex primitives.
+- `project_templates` is read-only list/preview. `project_template_scaffold` writes files and must remain approval-gated; direct Gateway execution treats `approval_id` as the Core-supplied approval proof.
+- `git_worktree_manager` retains its read actions as compatibility adapters to approval-gated TinadecTools Git read tools; Gateway must not execute Git locally for those reads. `stage`, `unstage`, `commit`, and `push` may execute real Git only with Core-supplied, Core-verified, `kind=git` approved `approval_id` plus explicit confirmations such as `confirm_stage`, `confirm_unstage`, `confirm_commit`, or `confirm_push`; path operations must stay inside the worktree, and push must block on dirty/behind/detached states. Merge, rebase, branch creation, checkout, and worktree creation remain blocked after approval until implemented deliberately.
+- The HTTP Code-tool execute route must verify approval state against Core before passing approval-gated requests to `executeCodeTool`. Do not trust an arbitrary renderer-supplied `approval_id`.
+- Manual CORS exists because `@elysiajs/cors` returned bad preflight behavior with the Node adapter.
+- Use `setStatus(set, result.status)` when forwarding Core response status.
+- OpenAPI docs are served at `/docs`.
+- Default port is `TINADEC_GATEWAY_PORT ?? 48730`.
+
+## ANTI-PATTERNS
+- Do not add durable state here.
+- Do not let Code tool execution bypass Core approval semantics; risky tools must remain blocked without approval context.
+- Do not bypass Core contracts when forwarding `/api/v1/*` shapes.
+- Do not remove local dev/Electron allowed origins without checking Desktop startup.
+- Do not assume dependency diagnostics are valid until `npm install` has run; missing deps cause many false LSP errors.
+
+## COMMANDS
+```bash
+npm run dev -w @tinadec/gateway
+npm run build -w @tinadec/gateway
+npm run test -w @tinadec/gateway
+```
+
+Target one test from `gateway/`:
+```bash
+node --test --import tsx src/coreClient.test.ts
+```

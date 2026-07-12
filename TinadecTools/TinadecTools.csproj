@@ -17,10 +17,9 @@
 
   <ItemGroup>
     <PackageReference Include="AsyncReaderWriterLock" Version="1.0.2" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="11.0.0-preview.5.26302.115"/>
+    <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
     <PackageReference Include="NLog.Extensions.Logging" Version="6.1.3"/>
-    <PackageReference Include="System.IO.Hashing" Version="11.0.0-preview.5.26302.115"/>
-    <PackageReference Include="UTF.Unknown" Version="2.6.0"/>
+    <PackageReference Include="System.IO.Hashing" Version="10.0.0"/>
   </ItemGroup>
 
   <ItemGroup>
@@ -31,6 +30,15 @@
 
   <ItemGroup>
     <None Update="Nlog.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\native\rg\rg.exe" Condition="Exists('..\native\rg\rg.exe')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\native\rg\rg" Condition="Exists('..\native\rg\rg')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

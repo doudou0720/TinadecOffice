@@ -11,9 +11,12 @@ dist-electron/
 TestResults/
 coverage/
 output/
-native/target/
 *.user
 *.suo
-native/codex-src/
-/native/codex-src
 .omo/
+.idea/
+/.tinadec/sandbox.json
+.opencode/
+*.log
+config.json
+oc-debug.log
