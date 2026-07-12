@@ -107,6 +107,23 @@ public sealed class CodeCapabilityProvider : ICapabilityProvider
         "runtime.java"
     ];
 
+    private static readonly IReadOnlyList<ToolDescriptorDto> GitReadTools =
+    [
+        GitRead("git_status", "Git Status", "git.status", "git.conflict"),
+        GitRead("git_log_list", "Git Log List", "git.log.read"),
+        GitRead("git_log_detail", "Git Log Detail", "git.log.read", "git.diff"),
+        GitRead("git_file_history", "Git File History", "git.history.read"),
+        GitRead("git_push_readiness", "Git Push Readiness", "git.push.readiness"),
+        GitRead("git_diff", "Git Diff", "git.diff"),
+        GitRead("git_branch_list", "Git Branch List", "git.branch.read"),
+        GitRead("git_worktree_list", "Git Worktree List", "git.worktree.read"),
+        GitRead("git_ref_list", "Git Ref List", "git.ref.read"),
+        GitRead("git_remote_list", "Git Remote List", "git.remote.read"),
+        GitRead("git_blame", "Git Blame", "git.blame"),
+        GitRead("git_file_at_revision", "Git File At Revision", "git.file.revision"),
+        GitRead("git_conflict_preview", "Git Conflict Preview", "git.conflict.preview")
+    ];
+
     private static readonly IReadOnlyList<ToolDescriptorDto> CodeTools =
     [
         new(
@@ -174,8 +191,22 @@ public sealed class CodeCapabilityProvider : ICapabilityProvider
             [
                 "git.status", "git.diff", "git.stage", "git.unstage", "git.worktree", "git.branch", "git.commit",
                 "git.push", "workspace.isolation", "tool-layer.code-suite"
-            ])
+            ]),
+        .. GitReadTools
     ];
+
+    private static ToolDescriptorDto GitRead(string id, string displayName, params string[] capabilities)
+    {
+        return new ToolDescriptorDto(
+            id,
+            displayName,
+            "programming",
+            "code",
+            "git-read",
+            true,
+            $"/api/v1/code/tools/{id}/execute",
+            [.. capabilities, "tool-layer.code-suite"]);
+    }
 
     public IReadOnlyList<ToolDescriptorDto> ListCapabilities()
     {

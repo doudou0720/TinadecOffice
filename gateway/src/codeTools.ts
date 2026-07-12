@@ -292,7 +292,20 @@ const TOOL_SPECS: Record<string, CodeToolSpec> = {
     category: 'git',
     requiresApproval: true,
     approvalSummary: 'Create or modify Git branches/worktrees.'
-  }
+  },
+  git_status: { id: 'git_status', summary: 'Inspect repository status, conflicts, upstream, and ahead/behind state through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git repository status.' },
+  git_log_list: { id: 'git_log_list', summary: 'List Git commits through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git commit history.' },
+  git_log_detail: { id: 'git_log_detail', summary: 'Read Git commit or range details through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git commit details.' },
+  git_file_history: { id: 'git_file_history', summary: 'Read Git file history through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git file history.' },
+  git_push_readiness: { id: 'git_push_readiness', summary: 'Derive push readiness and blockers through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git push readiness.' },
+  git_diff: { id: 'git_diff', summary: 'Read working tree, staged, or ref-range diffs through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git diff output.' },
+  git_branch_list: { id: 'git_branch_list', summary: 'List local and remote branches through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git branch metadata.' },
+  git_worktree_list: { id: 'git_worktree_list', summary: 'List linked worktrees through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git worktree metadata.' },
+  git_ref_list: { id: 'git_ref_list', summary: 'List branches, tags, and remote refs through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git refs.' },
+  git_remote_list: { id: 'git_remote_list', summary: 'List configured remotes through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git remotes.' },
+  git_blame: { id: 'git_blame', summary: 'Read line attribution through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git blame metadata.' },
+  git_file_at_revision: { id: 'git_file_at_revision', summary: 'Read a repository file at a revision through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git revision file content.' },
+  git_conflict_preview: { id: 'git_conflict_preview', summary: 'Read unresolved merge or rebase conflict blocks through TinadecTools.', category: 'git', requiresApproval: true, approvalSummary: 'Read Git conflict stages.' }
 };
 
 export function listCodeToolIds(): string[] {
@@ -417,7 +430,7 @@ export function codeToolApprovalUnavailableBlock(toolId: string, request: CodeTo
 }
 
 function allowedApprovalKindsForTool(toolId: string): string[] {
-  if (toolId === 'git_worktree_manager') {
+  if (toolId === 'git_worktree_manager' || toolId.startsWith('git_')) {
     return ['git'];
   }
 
@@ -609,6 +622,9 @@ export async function executeCodeTool(toolId: string, request: CodeToolExecuteRe
   }
 
   const args = request.arguments ?? {};
+  if (spec.id.startsWith('git_') && spec.id !== 'git_worktree_manager') {
+    return executeGitReadViaToolLayer(spec, request, args);
+  }
   if (spec.id === 'project_templates') {
     return executeProjectTemplatesTool(spec, request, args);
   }
@@ -848,6 +864,104 @@ async function executeCodeEditor(
   return failedResult(spec, `Unsupported code_editor action '${action}'.`, args, ['code_editor:unsupported-action']);
 }
 
+function gitReadCompatibilityTool(action: string, args: Record<string, unknown>): { toolId: string; params: Record<string, unknown> } | null {
+  switch (action) {
+    case 'status': return { toolId: 'git_status', params: {} };
+    case 'push_plan': return { toolId: 'git_push_readiness', params: {} };
+    case 'worktrees': return { toolId: 'git_worktree_list', params: {} };
+    case 'branch_list': return { toolId: 'git_branch_list', params: { include_remote: args.all !== false } };
+    case 'log': return { toolId: 'git_log_list', params: { limit: args.limit, revs: stringArg(args, 'ref') ? [stringArg(args, 'ref') as string] : undefined } };
+    case 'diff_compare': return { toolId: 'git_diff', params: { target: 'ref_range', base_ref: args.base_ref, head_ref: args.head_ref, paths: args.paths, max_diff_bytes: args.max_diff_bytes } };
+    case 'diff_preview': return { toolId: 'git_diff', params: { target: args.target ?? 'all', base_ref: args.base_ref, head_ref: args.head_ref, paths: args.paths, max_files: args.max_files, max_diff_bytes: args.max_diff_bytes } };
+    default: return null;
+  }
+}
+
+async function executeGitReadViaToolLayer(
+  spec: CodeToolSpec,
+  request: CodeToolExecuteRequest,
+  args: Record<string, unknown>,
+  overrideToolId?: string,
+  legacyAction?: string
+): Promise<CodeToolExecuteResult> {
+  if (!request.cwd) return failedResult(spec, `${spec.id} requires a cwd.`, args, ['git:missing-cwd']);
+  const toolId = overrideToolId ?? spec.id;
+  if (!request.approval_id) {
+    return resultFor(spec, 'blocked', `${toolId} requires a Core-approved Git read invocation.`, {
+      cwd: request.cwd,
+      required_approval: true
+    }, ['git:read', 'approval:required']);
+  }
+  try {
+    const result = await callToolLayer(request.cwd, toolId, {
+      ...args,
+      repository_path: '.'
+    }, {
+      approved: true,
+      sessionId: request.session_id
+    }) as Record<string, unknown>;
+    if (result.success !== true) {
+      return failedResult(spec, typeof result.error === 'string' ? result.error : `${toolId} failed.`, args, ['git:tool-layer-rejected', `tool_id:${toolId}`]);
+    }
+    const data = legacyAction
+      ? { ...adaptLegacyGitReadResult(result, legacyAction), action: legacyAction, cwd: path.resolve(request.cwd) }
+      : { ...result, cwd: path.resolve(request.cwd) };
+    return resultFor(spec, 'completed', legacyAction ? `Completed Git ${legacyAction} read.` : spec.summary, data, ['git:tool-layer', `tool_id:${toolId}`]);
+  } catch (error) {
+    return failedResult(spec, error instanceof Error ? error.message : String(error), args, ['git:tool-layer-failed', `tool_id:${toolId}`]);
+  }
+}
+
+function adaptLegacyGitReadResult(result: Record<string, unknown>, action: string): Record<string, unknown> {
+  if (action === 'push_plan') {
+    const status = recordArg(result.status);
+    return {
+      ...status,
+      push_ready: result.ready === true,
+      push_blockers: Array.isArray(result.blockers) ? result.blockers : [],
+      needs_push: result.needs_push === true
+    };
+  }
+  if (action === 'log') {
+    const commits = Array.isArray(result.commits) ? result.commits.map((value) => {
+      const commit = recordArg(value);
+      return {
+        ...commit,
+        email: commit.author_email ?? null,
+        date: commit.author_date ?? null
+      };
+    }) : [];
+    return { ...result, commits };
+  }
+  if (action === 'diff_preview' || action === 'diff_compare') {
+    const sections: Record<string, unknown>[] = Array.isArray(result.sections) ? result.sections.map((value) => {
+      const section = recordArg(value);
+      const files = Array.isArray(section.files) ? section.files : [];
+      return { ...section, id: section.kind ?? null, file_count: files.length, additions: null, deletions: null, notices: [] };
+    }) : [];
+    const refRange = sections.find((section) => section.kind === 'ref_range') ?? sections[0] ?? {};
+    if (action === 'diff_compare') {
+      return {
+        ...result,
+        base_ref: refRange.base_ref ?? null,
+        head_ref: refRange.head_ref ?? null,
+        diff_stat: null,
+        diff: refRange.diff ?? null,
+        files: refRange.files ?? [],
+        file_count: refRange.file_count ?? 0,
+        commits: [],
+        sections
+      };
+    }
+    return { ...result, sections };
+  }
+  return result;
+}
+
+function recordArg(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
 async function executeGitWorktreeManager(
   spec: CodeToolSpec,
   request: CodeToolExecuteRequest,
@@ -870,6 +984,11 @@ async function executeGitWorktreeManager(
 
   if (!request.cwd) {
     return failedResult(spec, 'Git worktree manager requires a cwd.', args);
+  }
+
+  const compatibilityTool = gitReadCompatibilityTool(action, args);
+  if (compatibilityTool) {
+    return executeGitReadViaToolLayer(spec, request, compatibilityTool.params, compatibilityTool.toolId, action);
   }
 
   const root = await git(request.cwd, ['rev-parse', '--show-toplevel']);
